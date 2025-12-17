@@ -88,6 +88,7 @@ dependencies {
     implementation(libs.grpc.kotlin.stub)
     implementation(libs.protobuf.kotlin)
     implementation(libs.protobuf.java.util)
+    implementation(libs.grpc.stub)
 }
 
 val internalApiUrl = "https://raw.githubusercontent.com/traP-jp/plutus/main/specs/openapi/internal.yaml"
@@ -112,12 +113,19 @@ protobuf {
                     "${it.group}:protoc-gen-grpc-kotlin:${it.version}:jdk8@jar"
                 }
         }
+        id("grpc") {
+            artifact =
+                libs.grpc.netty.get().let {
+                    "io.grpc:protoc-gen-grpc-java:${it.version}"
+                }
+        }
     }
     generateProtoTasks {
         all().forEach { task ->
             task.dependsOn("downloadSpecs")
             task.plugins {
                 id("grpckt")
+                id("grpc")
             }
             task.builtins {
                 id("kotlin")
@@ -196,6 +204,7 @@ tasks {
                 "UUID" to "kotlin.uuid.Uuid",
                 "uuid" to "kotlin.uuid.Uuid",
                 "string+date-time" to "kotlin.time.Instant",
+                "URI" to "kotlin.String",
             ),
         )
     }
@@ -227,6 +236,7 @@ tasks {
                 "UUID" to "kotlin.uuid.Uuid",
                 "uuid" to "kotlin.uuid.Uuid",
                 "string+date-time" to "kotlin.time.Instant",
+                "URI" to "kotlin.String",
             ),
         )
     }

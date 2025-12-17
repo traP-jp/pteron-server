@@ -37,8 +37,6 @@ fun Application.module() {
         modules(AppModule.module)
     }
 
-
-
     install(StatusPages) {
         exception<Throwable> { call, cause ->
             when (cause) {
@@ -81,25 +79,29 @@ fun Application.module() {
         json()
     }
     install(AutoHeadResponse) // see https://ktor.io/docs/autoheadresponse.html
-    install(
-        Compression,
-        jp.trap.plutus.pteron.openapi.public.ApplicationCompressionConfiguration()
-    ) // see https://ktor.io/docs/compression.html
-    install(
-        Compression,
-        jp.trap.plutus.pteron.openapi.internal.ApplicationCompressionConfiguration()
-    ) // see https://ktor.io/docs/compression.html
-    install(
-        HSTS,
-        jp.trap.plutus.pteron.openapi.public.ApplicationHstsConfiguration()
-    ) // see https://ktor.io/docs/hsts.html
-    install(
-        HSTS,
-        jp.trap.plutus.pteron.openapi.internal.ApplicationHstsConfiguration()
-    ) // see https://ktor.io/docs/hsts.html
+    install(Compression) {
+        gzip {
+            priority = 1.0
+        }
+        deflate {
+            priority = 10.0
+            minimumSize(1024) // condition
+        }
+    }
+    install(HSTS) {
+        maxAgeInSeconds = TimeUnit.DAYS.toSeconds(365)
+        includeSubDomains = true
+        preload = false
+    }
     install(Resources)
 
     routing {
+        route("health") {
+            get {
+                call.respond(HttpStatusCode.OK)
+            }
+        }
+
         route("api/v1") {
             // Public API
         }
