@@ -1,5 +1,7 @@
 import com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar
 import com.google.protobuf.gradle.id
+import org.openapitools.generator.gradle.plugin.tasks.GenerateTask
+import java.net.URI
 
 plugins {
     alias(libs.plugins.kotlin.jvm)
@@ -41,6 +43,7 @@ dependencies {
     implementation(libs.ktor.server.metrics)
     implementation(libs.ktor.server.websockets)
     implementation(libs.ktor.serialization.kotlinx.json)
+    implementation(libs.ktor.client.apache)
 
     // Koin
     implementation(libs.koin.ktor)
@@ -87,9 +90,13 @@ dependencies {
     implementation(libs.protobuf.java.util)
 }
 
-val openApiSpecFile = rootProject.file("../../../specs/openapi/pteron.yaml")
-val protoSpecDir = rootProject.file("../../../specs/protobuf")
-val generatedOpenApiDir = layout.buildDirectory.dir("generated/openapi")
+val internalApiUrl = "https://raw.githubusercontent.com/traP-jp/plutus/main/specs/openapi/internal.yaml"
+val publicApiUrl = "https://raw.githubusercontent.com/traP-jp/plutus/main/specs/openapi/pteron.yaml"
+val cornucopiaProtoUrl = "https://raw.githubusercontent.com/traP-jp/plutus/main/specs/protobuf/cornucopia.proto"
+
+val specsDir = layout.buildDirectory.dir("specs")
+val generatedOpenApiInternalDir = layout.buildDirectory.dir("generated/openapi/internal")
+val generatedOpenApiPublicDir = layout.buildDirectory.dir("generated/openapi/public")
 
 protobuf {
     protoc {
@@ -106,6 +113,7 @@ protobuf {
     }
     generateProtoTasks {
         all().forEach { task ->
+            task.dependsOn("downloadSpecs")
             task.plugins {
                 id("grpckt")
             }
@@ -116,45 +124,96 @@ protobuf {
     }
 }
 
-openApiGenerate {
-    generatorName.set("kotlin-server")
-    library.set("ktor")
-    inputSpec.set(openApiSpecFile.toURI().toString())
-    outputDir.set(generatedOpenApiDir.map { it.asFile.absolutePath })
-    packageName.set("jp.trap.plutus.pteron.openapi")
-    configOptions.set(
-        mapOf(
-            "serializationLibrary" to "kotlinx-serialization",
-            "serializableModel" to "true",
-            "enumPropertyNaming" to "UPPERCASE",
-        ),
-    )
-    typeMappings.set(
-        mapOf(
-            "UUID" to "kotlin.uuid.Uuid",
-            "uuid" to "kotlin.uuid.Uuid",
-            "string+date-time" to "kotlin.time.Instant",
-        ),
-    )
-}
-
 sourceSets {
     main {
         proto {
-            srcDir(protoSpecDir)
+            srcDir(specsDir.map { it.dir("protobuf") })
         }
-        kotlin.srcDir(generatedOpenApiDir.map { it.dir("src/main/kotlin") })
+        kotlin.srcDir(generatedOpenApiInternalDir.map { it.dir("src/main/kotlin") })
+        kotlin.srcDir(generatedOpenApiPublicDir.map { it.dir("src/main/kotlin") })
         resources {
-            srcDir(openApiSpecFile.parentFile)
+            srcDir(specsDir)
         }
     }
 }
 
 tasks {
+    val downloadSpecs by registering {
+        group = "build setup"
+        description = "Download specs from remote"
+        outputs.dir(specsDir)
+
+        doLast {
+            val openApiDir = specsDir.get().dir("openapi").asFile
+            val protoDir = specsDir.get().dir("protobuf").asFile
+            openApiDir.mkdirs()
+            protoDir.mkdirs()
+
+            fun download(url: String, dest: File) {
+                val connection = URI(url).toURL().openConnection()
+                connection.getInputStream().use { input ->
+                    dest.outputStream().use { output ->
+                        input.copyTo(output)
+                    }
+                }
+            }
+
+            download(internalApiUrl, File(openApiDir, "internal.yaml"))
+            download(publicApiUrl, File(openApiDir, "pteron.yaml"))
+            download(cornucopiaProtoUrl, File(protoDir, "cornucopia.proto"))
+        }
+    }
+
+    val generateInternalApi by registering(GenerateTask::class) {
+        dependsOn(downloadSpecs)
+        generatorName.set("kotlin-server")
+        library.set("ktor")
+        inputSpec.set(specsDir.map { it.file("openapi/internal.yaml").asFile.toURI().toString() })
+        outputDir.set(generatedOpenApiInternalDir.map { it.asFile.path })
+        packageName.set("jp.trap.plutus.pteron.openapi.internal")
+        configOptions.set(
+            mapOf(
+                "serializationLibrary" to "kotlinx-serialization",
+                "serializableModel" to "true",
+                "enumPropertyNaming" to "UPPERCASE",
+            ),
+        )
+        typeMappings.set(
+            mapOf(
+                "UUID" to "kotlin.uuid.Uuid",
+                "uuid" to "kotlin.uuid.Uuid",
+                "string+date-time" to "kotlin.time.Instant",
+            ),
+        )
+    }
+
+    val generatePublicApi by registering(GenerateTask::class) {
+        dependsOn(downloadSpecs)
+        generatorName.set("kotlin-server")
+        library.set("ktor")
+        inputSpec.set(specsDir.map { it.file("openapi/pteron.yaml").asFile.toURI().toString() })
+        outputDir.set(generatedOpenApiPublicDir.map { it.asFile.path })
+        packageName.set("jp.trap.plutus.pteron.openapi.public")
+        configOptions.set(
+            mapOf(
+                "serializationLibrary" to "kotlinx-serialization",
+                "serializableModel" to "true",
+                "enumPropertyNaming" to "UPPERCASE",
+            ),
+        )
+        typeMappings.set(
+            mapOf(
+                "UUID" to "kotlin.uuid.Uuid",
+                "uuid" to "kotlin.uuid.Uuid",
+                "string+date-time" to "kotlin.time.Instant",
+            ),
+        )
+    }
+
     val generateCode by registering {
         group = "build"
         description = "Generate all code (OpenAPI and Protobuf)"
-        dependsOn(openApiGenerate, "generateProto")
+        dependsOn(generateInternalApi, generatePublicApi, "generateProto")
     }
 
     build {
