@@ -1,4 +1,26 @@
-package org.example.jp.trap.plutus.pteron
+package jp.trap.plutus.pteron
+
+import com.codahale.metrics.Slf4jReporter
+import io.ktor.http.*
+import io.ktor.serialization.kotlinx.json.*
+import io.ktor.server.application.*
+import io.ktor.server.engine.*
+import io.ktor.server.metrics.dropwizard.*
+import io.ktor.server.netty.*
+import io.ktor.server.plugins.autohead.*
+import io.ktor.server.plugins.compression.*
+import io.ktor.server.plugins.contentnegotiation.*
+import io.ktor.server.plugins.defaultheaders.*
+import io.ktor.server.plugins.hsts.*
+import io.ktor.server.plugins.statuspages.*
+import io.ktor.server.resources.*
+import io.ktor.server.response.*
+import io.ktor.server.routing.*
+import jp.trap.plutus.pteron.di.AppModule
+import org.koin.ksp.generated.module
+import org.koin.ktor.plugin.Koin
+import org.koin.logger.slf4jLogger
+import java.util.concurrent.TimeUnit
 
 fun main() {
     embeddedServer(
