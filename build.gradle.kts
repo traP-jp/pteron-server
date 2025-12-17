@@ -100,15 +100,17 @@ val generatedOpenApiPublicDir = layout.buildDirectory.dir("generated/openapi/pub
 
 protobuf {
     protoc {
-        artifact = libs.protobuf.kotlin.get().let {
-            "${it.group}:protoc:${it.version}"
-        }
+        artifact =
+            libs.protobuf.kotlin.get().let {
+                "${it.group}:protoc:${it.version}"
+            }
     }
     plugins {
         id("grpckt") {
-            artifact = libs.grpc.kotlin.stub.get().let {
-                "${it.group}:protoc-gen-grpc-kotlin:${it.version}:jdk8@jar"
-            }
+            artifact =
+                libs.grpc.kotlin.stub.get().let {
+                    "${it.group}:protoc-gen-grpc-kotlin:${it.version}:jdk8@jar"
+                }
         }
     }
     generateProtoTasks {
@@ -149,7 +151,10 @@ tasks {
             openApiDir.mkdirs()
             protoDir.mkdirs()
 
-            fun download(url: String, dest: File) {
+            fun download(
+                url: String,
+                dest: File,
+            ) {
                 val connection = URI(url).toURL().openConnection()
                 connection.getInputStream().use { input ->
                     dest.outputStream().use { output ->
@@ -168,7 +173,15 @@ tasks {
         dependsOn(downloadSpecs)
         generatorName.set("kotlin-server")
         library.set("ktor")
-        inputSpec.set(specsDir.map { it.file("openapi/internal.yaml").asFile.toURI().toString() })
+        inputSpec.set(
+            specsDir.map {
+                it
+                    .file("openapi/internal.yaml")
+                    .asFile
+                    .toURI()
+                    .toString()
+            },
+        )
         outputDir.set(generatedOpenApiInternalDir.map { it.asFile.path })
         packageName.set("jp.trap.plutus.pteron.openapi.internal")
         configOptions.set(
@@ -191,7 +204,15 @@ tasks {
         dependsOn(downloadSpecs)
         generatorName.set("kotlin-server")
         library.set("ktor")
-        inputSpec.set(specsDir.map { it.file("openapi/pteron.yaml").asFile.toURI().toString() })
+        inputSpec.set(
+            specsDir.map {
+                it
+                    .file("openapi/pteron.yaml")
+                    .asFile
+                    .toURI()
+                    .toString()
+            },
+        )
         outputDir.set(generatedOpenApiPublicDir.map { it.asFile.path })
         packageName.set("jp.trap.plutus.pteron.openapi.public")
         configOptions.set(
