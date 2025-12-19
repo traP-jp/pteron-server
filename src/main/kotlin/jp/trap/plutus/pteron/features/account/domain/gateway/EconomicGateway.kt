@@ -11,4 +11,6 @@ interface EconomicGateway {
         to: AccountId,
         amount: Long,
     )
+
+    suspend fun createAccount(canOverdraft: Boolean): Account
 }

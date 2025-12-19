@@ -4,6 +4,7 @@ import com.codahale.metrics.Slf4jReporter
 import io.ktor.http.*
 import io.ktor.serialization.kotlinx.json.*
 import io.ktor.server.application.*
+import io.ktor.server.auth.*
 import io.ktor.server.engine.*
 import io.ktor.server.metrics.dropwizard.*
 import io.ktor.server.netty.*
@@ -16,8 +17,13 @@ import io.ktor.server.plugins.statuspages.*
 import io.ktor.server.resources.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
+import jp.trap.plutus.pteron.auth.forwardAuth
 import jp.trap.plutus.pteron.di.AppModule
+import jp.trap.plutus.pteron.features.user.controller.userRoutes
+import jp.trap.plutus.pteron.features.user.service.UserService
+import jp.trap.plutus.pteron.utils.trapId
 import org.koin.ksp.generated.module
+import org.koin.ktor.ext.inject
 import org.koin.ktor.plugin.Koin
 import org.koin.logger.slf4jLogger
 import java.util.concurrent.TimeUnit
@@ -27,7 +33,7 @@ fun main() {
         factory = Netty,
         port = 8080,
         host = "0.0.0.0",
-        module = Application::module
+        module = Application::module,
     ).start(wait = true)
 }
 
@@ -37,26 +43,31 @@ fun Application.module() {
         modules(AppModule.module)
     }
 
+    val userService by inject<UserService>()
+
     install(StatusPages) {
         exception<Throwable> { call, cause ->
             when (cause) {
-                is IllegalArgumentException ->
+                is IllegalArgumentException -> {
                     call.respond(
                         HttpStatusCode.BadRequest,
                         Error(cause.message ?: "Bad request"),
                     )
+                }
 
-                is NoSuchElementException ->
+                is NoSuchElementException -> {
                     call.respond(
                         HttpStatusCode.NotFound,
                         Error(cause.message ?: "Not found"),
                     )
+                }
 
-                else ->
+                else -> {
                     call.respond(
                         HttpStatusCode.InternalServerError,
                         Error(cause.message ?: "Unknown error"),
                     )
+                }
             }
         }
         status(HttpStatusCode.NotFound) { call, status ->
@@ -95,6 +106,24 @@ fun Application.module() {
     }
     install(Resources)
 
+    install(Authentication) {
+        forwardAuth("ForwardAuth") {
+            verify { context ->
+                val call = context.call
+                try {
+                    val userId = call.trapId
+                    userService.ensureUser(userId)
+                    context.principal(UserIdPrincipal(userId.value))
+                } catch (_: Exception) {
+                    context.challenge("ForwardAuth", AuthenticationFailedCause.NoCredentials) { challenge, call ->
+                        call.response.status(HttpStatusCode.Unauthorized)
+                        challenge.complete()
+                    }
+                }
+            }
+        }
+    }
+
     routing {
         route("health") {
             get {
@@ -106,8 +135,11 @@ fun Application.module() {
             // Public API
         }
 
-        route("api/internal") {
-            // Internal API
+        authenticate("ForwardAuth") {
+            route("api/internal") {
+                // Internal API
+                userRoutes()
+            }
         }
     }
 }
