@@ -18,6 +18,7 @@ import io.ktor.server.resources.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import jp.trap.plutus.pteron.auth.forwardAuth
+import jp.trap.plutus.pteron.config.Environment
 import jp.trap.plutus.pteron.di.AppModule
 import jp.trap.plutus.pteron.features.user.controller.userRoutes
 import jp.trap.plutus.pteron.features.user.service.UserService
@@ -29,6 +30,8 @@ import org.koin.logger.slf4jLogger
 import java.util.concurrent.TimeUnit
 
 fun main() {
+    Environment.validate()
+
     embeddedServer(
         factory = Netty,
         port = 8080,
