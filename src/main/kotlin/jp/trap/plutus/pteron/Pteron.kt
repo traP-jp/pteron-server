@@ -32,6 +32,9 @@ import org.koin.ksp.generated.module
 import org.koin.ktor.ext.inject
 import org.koin.ktor.plugin.Koin
 import org.koin.logger.slf4jLogger
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import java.util.concurrent.TimeUnit
 
 fun main() {
@@ -54,8 +57,14 @@ fun Application.module() {
     val database by inject<Database>()
     val stub by inject<CornucopiaServiceCoroutineStub>()
 
-    StartupHealthCheck.verifyDatabase(database)
-    StartupHealthCheck.verifyGrpc(stub)
+    runBlocking {
+        launch(Dispatchers.IO) {
+            StartupHealthCheck.verifyDatabase(database)
+        }
+        launch {
+            StartupHealthCheck.verifyGrpc(stub)
+        }
+    }
 
     val userService by inject<UserService>()
 

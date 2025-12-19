@@ -2,7 +2,7 @@ package jp.trap.plutus.pteron.config
 
 import io.grpc.Status
 import jp.trap.plutus.api.CornucopiaServiceGrpcKt.CornucopiaServiceCoroutineStub
-import jp.trap.plutus.api.getAccountRequest
+import jp.trap.plutus.api.listAccountsRequest
 import kotlinx.coroutines.runBlocking
 import org.jetbrains.exposed.v1.jdbc.Database
 import org.jetbrains.exposed.v1.jdbc.transactions.transaction
@@ -27,22 +27,18 @@ object StartupHealthCheck {
         }
     }
 
-    fun verifyGrpc(stub: CornucopiaServiceCoroutineStub) {
+    suspend fun verifyGrpc(stub: CornucopiaServiceCoroutineStub) {
         logger.info("gRPC接続を確認中...")
         try {
-            runBlocking {
-                stub.getAccount(getAccountRequest { accountId = "health_check_probe" })
-            }
-            logger.info("gRPC接続確認: OK")
+            val start = System.currentTimeMillis()
+            val response = stub.listAccounts(listAccountsRequest { limit = 1 })
+            val elapsed = System.currentTimeMillis() - start
+            logger.info("gRPC接続確認: OK (Response: ${response.totalCount}, ${elapsed}ms)")
         } catch (e: Exception) {
             val status = Status.fromThrowable(e)
             val code = status.code
-            if (code == Status.Code.UNAVAILABLE || code == Status.Code.DEADLINE_EXCEEDED) {
-                logger.error("gRPC接続に失敗しました", e)
-                throw IllegalStateException("gRPCサーバーに接続できません: ${status.description}", e)
-            }
-            // その他のエラー(NOT_FOUNDなど)は接続成功とみなす
-            logger.info("gRPC接続確認: OK (Response: ${code})")
+            logger.error("gRPC接続に失敗しました", e)
+            throw IllegalStateException("gRPCサーバーに接続できません: ${status.description}", e)
         }
     }
 }
