@@ -18,7 +18,7 @@ class UserService(
     private val userTransaction: UserTransaction,
 ) {
     suspend fun ensureUser(name: Username) {
-        val existingUser = userRepository.findByUsername(name)
+        val existingUser = userTransaction.runInTransaction { userRepository.findByUsername(name) }
         if (existingUser != null) {
             return
         }
@@ -53,10 +53,10 @@ class UserService(
     }
 
     suspend fun getUserByName(name: Username): User =
-        userRepository.findByUsername(name)
+        userTransaction.runInTransaction { userRepository.findByUsername(name) }
             ?: throw IllegalStateException("User not found: $name")
 
     suspend fun getUserById(id: UserId): User =
-        userRepository.findById(id)
+        userTransaction.runInTransaction { userRepository.findById(id) }
             ?: throw IllegalStateException("User not found: $id")
 }

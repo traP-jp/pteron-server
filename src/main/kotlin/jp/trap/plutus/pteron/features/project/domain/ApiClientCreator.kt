@@ -1,6 +1,7 @@
 package jp.trap.plutus.pteron.features.project.domain
 
 import com.github.f4b6a3.uuid.UuidCreator
+import jp.trap.plutus.pteron.features.project.domain.model.ApiClient
 import kotlin.time.Clock
 import kotlin.uuid.toKotlinUuid
 

@@ -1,4 +1,4 @@
-package jp.trap.plutus.pteron.features.project.domain
+package jp.trap.plutus.pteron.features.project.domain.model
 
 import jp.trap.plutus.pteron.common.domain.model.AccountId
 import jp.trap.plutus.pteron.common.domain.model.ProjectId
@@ -46,6 +46,10 @@ class Project(
     val accountId: AccountId,
     val apiClients: List<ApiClient>,
 ) {
+    init {
+        require(ownerId in adminIds) { "Owner must be included in admin IDs." }
+    }
+
     fun hasAdmin(userId: UserId): Boolean = adminIds.contains(userId)
 
     fun addAdmin(userId: UserId): AdminAdditionResult {
