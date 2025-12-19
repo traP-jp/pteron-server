@@ -18,10 +18,7 @@ import kotlin.uuid.toKotlinUuid
 class ProjectService(
     private val projectRepository: ProjectRepository,
 ) {
-    suspend fun getProjects(
-        limit: Int,
-        cursor: String?,
-    ): Pair<List<Project>, String?> = projectRepository.batchFind(limit, cursor)
+    suspend fun getProjects(): List<Project> = projectRepository.findAll()
 
     suspend fun createProject(
         name: String,
@@ -49,11 +46,7 @@ class ProjectService(
     ) {
         val project =
             projectRepository.findById(projectId) ?: throw NotFoundException("Project not found: $projectId")
-        if (project.hasAdmin(userId)) {
-            throw IllegalArgumentException("User is already an admin")
-        }
-        val result = project.addAdmin(userId)
-        when (result) {
+        when (val result = project.addAdmin(userId)) {
             is AdminAdditionResult.Success -> {
                 projectRepository.save(result.project)
             }
