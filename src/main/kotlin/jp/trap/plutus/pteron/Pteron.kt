@@ -25,6 +25,9 @@ import jp.trap.plutus.pteron.features.project.service.ForbiddenOperationExceptio
 import jp.trap.plutus.pteron.features.user.controller.userRoutes
 import jp.trap.plutus.pteron.features.user.service.UserService
 import jp.trap.plutus.pteron.utils.trapId
+import jp.trap.plutus.api.CornucopiaServiceGrpcKt.CornucopiaServiceCoroutineStub
+import jp.trap.plutus.pteron.config.StartupHealthCheck
+import org.jetbrains.exposed.v1.jdbc.Database
 import org.koin.ksp.generated.module
 import org.koin.ktor.ext.inject
 import org.koin.ktor.plugin.Koin
@@ -47,6 +50,12 @@ fun Application.module() {
         slf4jLogger()
         modules(AppModule.module)
     }
+
+    val database by inject<Database>()
+    val stub by inject<CornucopiaServiceCoroutineStub>()
+
+    StartupHealthCheck.verifyDatabase(database)
+    StartupHealthCheck.verifyGrpc(stub)
 
     val userService by inject<UserService>()
 
