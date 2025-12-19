@@ -3,7 +3,6 @@ package jp.trap.plutus.pteron.config
 import io.grpc.Status
 import jp.trap.plutus.api.CornucopiaServiceGrpcKt.CornucopiaServiceCoroutineStub
 import jp.trap.plutus.api.listAccountsRequest
-import kotlinx.coroutines.runBlocking
 import org.jetbrains.exposed.v1.jdbc.Database
 import org.jetbrains.exposed.v1.jdbc.transactions.transaction
 import org.slf4j.LoggerFactory
@@ -30,13 +29,14 @@ object StartupHealthCheck {
     suspend fun verifyGrpc(stub: CornucopiaServiceCoroutineStub) {
         logger.info("gRPC接続を確認中...")
         try {
+            stub.listAccounts(listAccountsRequest { limit = 1 })
+
             val start = System.currentTimeMillis()
             val response = stub.listAccounts(listAccountsRequest { limit = 1 })
             val elapsed = System.currentTimeMillis() - start
             logger.info("gRPC接続確認: OK (Response: ${response.totalCount}, ${elapsed}ms)")
         } catch (e: Exception) {
             val status = Status.fromThrowable(e)
-            val code = status.code
             logger.error("gRPC接続に失敗しました", e)
             throw IllegalStateException("gRPCサーバーに接続できません: ${status.description}", e)
         }
