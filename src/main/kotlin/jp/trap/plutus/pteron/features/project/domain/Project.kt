@@ -6,6 +6,38 @@ import jp.trap.plutus.pteron.common.domain.model.UserId
 import kotlin.time.Instant
 import kotlin.uuid.Uuid
 
+sealed interface AdminAdditionResult {
+    data class Success(
+        val project: Project,
+    ) : AdminAdditionResult
+
+    sealed interface Failure : AdminAdditionResult {
+        object AlreadyExists : AdminAdditionResult
+    }
+}
+
+sealed interface AdminRemoveResult {
+    data class Success(
+        val project: Project,
+    ) : AdminRemoveResult
+
+    sealed interface Failure : AdminRemoveResult {
+        object AdminNotFound : AdminRemoveResult
+
+        object CannotRemoveOwner : AdminRemoveResult
+    }
+}
+
+sealed interface ApiClientRemoveResult {
+    data class Success(
+        val project: Project,
+    ) : ApiClientRemoveResult
+
+    sealed interface Failure : ApiClientRemoveResult {
+        object ClientNotFound : ApiClientRemoveResult
+    }
+}
+
 class Project(
     val id: ProjectId,
     val name: String,
@@ -16,38 +48,44 @@ class Project(
 ) {
     fun hasAdmin(userId: UserId): Boolean = adminIds.contains(userId)
 
-    fun addAdmin(userId: UserId): Project {
+    fun addAdmin(userId: UserId): AdminAdditionResult {
         if (userId in adminIds) {
-            throw IllegalArgumentException("User already exists for this project")
+            return AdminAdditionResult.Failure.AlreadyExists
         }
-        return Project(
-            id = id,
-            name = name,
-            ownerId = ownerId,
-            adminIds = adminIds + userId,
-            accountId = accountId,
-            apiClients = apiClients,
+
+        return AdminAdditionResult.Success(
+            Project(
+                id = id,
+                name = name,
+                ownerId = ownerId,
+                adminIds = adminIds + userId,
+                accountId = accountId,
+                apiClients = apiClients,
+            ),
         )
     }
 
-    fun removeAdmin(userId: UserId): Project {
+    fun removeAdmin(userId: UserId): AdminRemoveResult {
         if (userId !in adminIds) {
-            throw IllegalArgumentException("User does not exist for this project")
+            return AdminRemoveResult.Failure.AdminNotFound
         }
         if (userId == ownerId) {
-            throw IllegalArgumentException("Owner can't be deleted")
+            return AdminRemoveResult.Failure.CannotRemoveOwner
         }
-        return Project(
-            id = id,
-            name = name,
-            ownerId = ownerId,
-            adminIds = adminIds - userId,
-            accountId = accountId,
-            apiClients = apiClients,
+        return AdminRemoveResult.Success(
+            Project(
+                id = id,
+                name = name,
+                ownerId = ownerId,
+                adminIds = adminIds - userId,
+                accountId = accountId,
+                apiClients = apiClients,
+            ),
         )
     }
 
     fun addApiClient(client: ApiClient): Project =
+
         Project(
             id = id,
             name = name,
@@ -57,17 +95,19 @@ class Project(
             apiClients = apiClients + client,
         )
 
-    fun removeApiClient(client: ApiClient): Project {
+    fun removeApiClient(client: ApiClient): ApiClientRemoveResult {
         if (client !in apiClients) {
-            throw IllegalArgumentException("Client is not registered")
+            return ApiClientRemoveResult.Failure.ClientNotFound
         }
-        return Project(
-            id = id,
-            name = name,
-            ownerId = ownerId,
-            adminIds = adminIds,
-            accountId = accountId,
-            apiClients = apiClients - client,
+        return ApiClientRemoveResult.Success(
+            Project(
+                id = id,
+                name = name,
+                ownerId = ownerId,
+                adminIds = adminIds,
+                accountId = accountId,
+                apiClients = apiClients - client,
+            ),
         )
     }
 }
