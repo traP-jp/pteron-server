@@ -5,8 +5,11 @@ import io.ktor.server.plugins.NotFoundException
 import jp.trap.plutus.pteron.common.domain.model.AccountId
 import jp.trap.plutus.pteron.common.domain.model.ProjectId
 import jp.trap.plutus.pteron.common.domain.model.UserId
+import jp.trap.plutus.pteron.features.project.domain.AdminAdditionResult
+import jp.trap.plutus.pteron.features.project.domain.AdminRemoveResult
 import jp.trap.plutus.pteron.features.project.domain.ApiClient
 import jp.trap.plutus.pteron.features.project.domain.ApiClientCreator
+import jp.trap.plutus.pteron.features.project.domain.ApiClientRemoveResult
 import jp.trap.plutus.pteron.features.project.domain.Project
 import jp.trap.plutus.pteron.features.project.domain.ProjectRepository
 import kotlin.uuid.Uuid
@@ -49,7 +52,16 @@ class ProjectService(
         if (project.hasAdmin(userId)) {
             throw IllegalArgumentException("User is already an admin")
         }
-        projectRepository.save(project.addAdmin(userId))
+        val result = project.addAdmin(userId)
+        when (result) {
+            is AdminAdditionResult.Success -> {
+                projectRepository.save(result.project)
+            }
+
+            is AdminAdditionResult.Failure.AlreadyExists -> {
+                throw IllegalArgumentException("User is already an admin")
+            }
+        }
     }
 
     suspend fun deleteProjectAdmin(
@@ -58,10 +70,23 @@ class ProjectService(
     ) {
         val project =
             projectRepository.findById(projectId) ?: throw NotFoundException("Project not found: $projectId")
-        if (!project.hasAdmin(userId)) {
-            throw IllegalArgumentException("User is not an admin")
+
+        val result = project.removeAdmin(userId)
+        when (result) {
+            is AdminRemoveResult.Success -> {
+                // 成功なら、中身の新しいProjectを取り出して保存
+                projectRepository.save(result.project)
+            }
+
+            is AdminRemoveResult.Failure.AdminNotFound -> {
+                // 失敗理由に合わせて例外を投げる
+                throw IllegalArgumentException("User is not an admin")
+            }
+
+            is AdminRemoveResult.Failure.CannotRemoveOwner -> {
+                throw IllegalArgumentException("Owner cannot be removed from admins")
+            }
         }
-        projectRepository.save(project.removeAdmin(userId))
     }
 
     suspend fun createAPIClient(projectId: ProjectId): ApiClient {
@@ -81,6 +106,15 @@ class ProjectService(
         val clientToRemove =
             project.apiClients.find { it.clientId == clientId }
                 ?: throw IllegalArgumentException("Client not found: $clientId")
-        projectRepository.save(project.removeApiClient(clientToRemove))
+        val result = project.removeApiClient(clientToRemove)
+        when (result) {
+            is ApiClientRemoveResult.Success -> {
+                projectRepository.save(result.project)
+            }
+
+            is ApiClientRemoveResult.Failure.ClientNotFound -> {
+                throw IllegalArgumentException("Client not found: $clientId")
+            }
+        }
     }
 }

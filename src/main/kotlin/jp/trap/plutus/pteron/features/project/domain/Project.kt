@@ -12,7 +12,7 @@ sealed interface AdminAdditionResult {
     ) : AdminAdditionResult
 
     sealed interface Failure : AdminAdditionResult {
-        object AlreadyExists : AdminAdditionResult
+        object AlreadyExists : Failure
     }
 }
 
@@ -22,9 +22,9 @@ sealed interface AdminRemoveResult {
     ) : AdminRemoveResult
 
     sealed interface Failure : AdminRemoveResult {
-        object AdminNotFound : AdminRemoveResult
+        object AdminNotFound : Failure
 
-        object CannotRemoveOwner : AdminRemoveResult
+        object CannotRemoveOwner : Failure
     }
 }
 
@@ -34,7 +34,7 @@ sealed interface ApiClientRemoveResult {
     ) : ApiClientRemoveResult
 
     sealed interface Failure : ApiClientRemoveResult {
-        object ClientNotFound : ApiClientRemoveResult
+        object ClientNotFound : Failure
     }
 }
 
