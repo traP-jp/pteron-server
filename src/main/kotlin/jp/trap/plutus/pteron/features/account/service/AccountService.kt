@@ -12,4 +12,6 @@ class AccountService(
     suspend fun getAccountById(id: AccountId): Account =
         economicGateway.findAccountById(id)
             ?: throw IllegalStateException("Account not found: $id")
+
+    suspend fun getAccountsByIds(ids: List<AccountId>): List<Account> = economicGateway.findAccountsByIds(ids)
 }

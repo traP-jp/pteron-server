@@ -7,6 +7,7 @@ import jp.trap.plutus.pteron.features.user.domain.model.Username
 import jp.trap.plutus.pteron.features.user.domain.repository.UserRepository
 import org.jetbrains.exposed.v1.core.ResultRow
 import org.jetbrains.exposed.v1.core.eq
+import org.jetbrains.exposed.v1.core.inList
 import org.jetbrains.exposed.v1.jdbc.selectAll
 import org.jetbrains.exposed.v1.jdbc.upsert
 import org.koin.core.annotation.Single
@@ -21,6 +22,14 @@ class DatabaseUserRepository : UserRepository {
             .where { UserTable.id eq id.value.toJavaUuid() }
             .map { it.toUser() }
             .singleOrNull()
+
+    override suspend fun findByIds(ids: List<UserId>): List<User> {
+        if (ids.isEmpty()) return emptyList()
+        return UserTable
+            .selectAll()
+            .where { UserTable.id inList ids.map { it.value.toJavaUuid() } }
+            .map { it.toUser() }
+    }
 
     override suspend fun findByUsername(username: Username): User? =
         UserTable
