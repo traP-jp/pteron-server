@@ -59,4 +59,6 @@ class UserService(
     suspend fun getUserById(id: UserId): User =
         userTransaction.runInTransaction { userRepository.findById(id) }
             ?: throw IllegalStateException("User not found: $id")
+
+    suspend fun getUsersByIds(ids: List<UserId>): List<User> = userTransaction.runInTransaction { userRepository.findByIds(ids) }
 }

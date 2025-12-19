@@ -5,6 +5,7 @@ import io.grpc.StatusException
 import jp.trap.plutus.api.CornucopiaServiceGrpcKt.CornucopiaServiceCoroutineStub
 import jp.trap.plutus.api.createAccountRequest
 import jp.trap.plutus.api.getAccountRequest
+import jp.trap.plutus.api.getAccountsRequest
 import jp.trap.plutus.api.transferRequest
 import jp.trap.plutus.pteron.common.domain.model.AccountId
 import jp.trap.plutus.pteron.features.account.domain.gateway.EconomicGateway
@@ -37,7 +38,21 @@ class CornucopiaEconomicGateway(
         }
     }
 
-    override suspend fun transfar(
+    override suspend fun findAccountsByIds(accountIds: List<AccountId>): List<Account> {
+        val request =
+            getAccountsRequest {
+                this.accountIds.addAll(accountIds.map { it.value.toString() })
+            }
+        return stub.getAccounts(request).accountsList.map {
+            Account(
+                accountId = AccountId(Uuid.parse(it.accountId)),
+                balance = it.balance,
+                canOverdraft = it.canOverdraft,
+            )
+        }
+    }
+
+    override suspend fun transfer(
         from: AccountId,
         to: AccountId,
         amount: Long,

@@ -81,6 +81,7 @@ dependencies {
 
     // Utils
     implementation(libs.uuid.creator)
+    implementation(libs.jbcrypt)
 
     // gRPC Client
     implementation(libs.grpc.netty)

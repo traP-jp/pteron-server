@@ -40,17 +40,37 @@ sealed interface ApiClientRemoveResult {
 
 class Project(
     val id: ProjectId,
-    val name: String,
+    val name: ProjectName,
     val ownerId: UserId,
     val adminIds: List<UserId>,
     val accountId: AccountId,
     val apiClients: List<ApiClient>,
+    val url: ProjectUrl? = null,
 ) {
     init {
         require(ownerId in adminIds) { "Owner must be included in admin IDs." }
     }
 
-    fun hasAdmin(userId: UserId): Boolean = adminIds.contains(userId)
+    fun isOwner(userId: UserId): Boolean = ownerId == userId
+
+    fun isAdmin(userId: UserId): Boolean = adminIds.contains(userId)
+
+    fun canDelete(userId: UserId): Boolean = isOwner(userId)
+
+    fun canManageApiClients(userId: UserId): Boolean = isAdmin(userId)
+
+    fun canManageAdmins(userId: UserId): Boolean = isOwner(userId)
+
+    fun updateUrl(newUrl: ProjectUrl): Project =
+        Project(
+            id = id,
+            name = name,
+            ownerId = ownerId,
+            adminIds = adminIds,
+            accountId = accountId,
+            apiClients = apiClients,
+            url = newUrl,
+        )
 
     fun addAdmin(userId: UserId): AdminAdditionResult {
         if (userId in adminIds) {
@@ -65,6 +85,7 @@ class Project(
                 adminIds = adminIds + userId,
                 accountId = accountId,
                 apiClients = apiClients,
+                url = url,
             ),
         )
     }
@@ -84,6 +105,7 @@ class Project(
                 adminIds = adminIds - userId,
                 accountId = accountId,
                 apiClients = apiClients,
+                url = url,
             ),
         )
     }
@@ -97,6 +119,7 @@ class Project(
             adminIds = adminIds,
             accountId = accountId,
             apiClients = apiClients + client,
+            url = url,
         )
 
     fun removeApiClient(client: ApiClient): ApiClientRemoveResult {
@@ -111,6 +134,7 @@ class Project(
                 adminIds = adminIds,
                 accountId = accountId,
                 apiClients = apiClients - client,
+                url = url,
             ),
         )
     }
@@ -118,6 +142,18 @@ class Project(
 
 class ApiClient(
     val clientId: Uuid,
-    val clientSecret: String,
+    val clientSecretHashed: String,
     val createdAt: Instant,
-)
+) {
+    fun verifySecret(plainSecret: String): Boolean =
+        org.mindrot.jbcrypt.BCrypt
+            .checkpw(plainSecret, clientSecretHashed)
+
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other !is ApiClient) return false
+        return clientId == other.clientId
+    }
+
+    override fun hashCode(): Int = clientId.hashCode()
+}

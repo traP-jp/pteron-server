@@ -5,13 +5,16 @@ import io.ktor.server.plugins.*
 import jp.trap.plutus.pteron.common.domain.model.ProjectId
 import jp.trap.plutus.pteron.common.domain.model.UserId
 import jp.trap.plutus.pteron.features.account.domain.gateway.EconomicGateway
+import jp.trap.plutus.pteron.features.project.domain.ApiClientCreationResult
 import jp.trap.plutus.pteron.features.project.domain.ApiClientCreator
 import jp.trap.plutus.pteron.features.project.domain.model.*
 import jp.trap.plutus.pteron.features.project.domain.repository.ProjectRepository
 import jp.trap.plutus.pteron.features.project.domain.transaction.ProjectTransaction
+import org.koin.core.annotation.Single
 import kotlin.uuid.Uuid
 import kotlin.uuid.toKotlinUuid
 
+@Single
 class ProjectService(
     private val projectRepository: ProjectRepository,
     private val projectTransaction: ProjectTransaction,
@@ -20,8 +23,9 @@ class ProjectService(
     suspend fun getProjects(): List<Project> = projectRepository.findAll()
 
     suspend fun createProject(
-        name: String,
+        name: ProjectName,
         ownerId: UserId,
+        url: ProjectUrl? = null,
     ): Project {
         val account = economicGateway.createAccount(canOverdraft = false)
 
@@ -34,6 +38,7 @@ class ProjectService(
                     adminIds = listOf(ownerId),
                     accountId = account.accountId,
                     apiClients = emptyList(),
+                    url = url,
                 )
             projectRepository.save(project)
             project
@@ -44,13 +49,37 @@ class ProjectService(
         projectTransaction.runInTransaction { projectRepository.findById(projectId) }
             ?: throw NotFoundException("Project $projectId not found")
 
+    suspend fun updateProject(
+        projectId: ProjectId,
+        url: ProjectUrl,
+        actorId: UserId,
+    ): Project =
+        projectTransaction.runInTransaction {
+            val project =
+                projectRepository.findById(projectId) ?: throw NotFoundException("Project not found: $projectId")
+
+            if (!project.isAdmin(actorId)) {
+                throw ForbiddenOperationException("Only admins can update project settings")
+            }
+
+            val updatedProject = project.updateUrl(url)
+            projectRepository.save(updatedProject)
+            updatedProject
+        }
+
     suspend fun addProjectAdmin(
         projectId: ProjectId,
         userId: UserId,
+        actorId: UserId,
     ) {
         projectTransaction.runInTransaction {
             val project =
                 projectRepository.findById(projectId) ?: throw NotFoundException("Project not found: $projectId")
+
+            if (!project.canManageAdmins(actorId)) {
+                throw ForbiddenOperationException("Only the owner can manage admins")
+            }
+
             when (val result = project.addAdmin(userId)) {
                 is AdminAdditionResult.Success -> {
                     projectRepository.save(result.project)
@@ -66,10 +95,15 @@ class ProjectService(
     suspend fun deleteProjectAdmin(
         projectId: ProjectId,
         userId: UserId,
+        actorId: UserId,
     ) {
         projectTransaction.runInTransaction {
             val project =
                 projectRepository.findById(projectId) ?: throw NotFoundException("Project not found: $projectId")
+
+            if (!project.canManageAdmins(actorId)) {
+                throw ForbiddenOperationException("Only the owner can manage admins")
+            }
 
             when (val result = project.removeAdmin(userId)) {
                 is AdminRemoveResult.Success -> {
@@ -87,22 +121,51 @@ class ProjectService(
         }
     }
 
-    suspend fun createApiClient(projectId: ProjectId): ApiClient =
+    suspend fun createApiClient(
+        projectId: ProjectId,
+        actorId: UserId,
+    ): ApiClientCreationResult =
         projectTransaction.runInTransaction {
-            val apiClient = ApiClientCreator.createApiClient()
             val project =
                 projectRepository.findById(projectId) ?: throw NotFoundException("Project not found: $projectId")
-            projectRepository.save(project.addApiClient(apiClient))
-            apiClient
+
+            if (!project.canManageApiClients(actorId)) {
+                throw ForbiddenOperationException("Only admins can manage API clients")
+            }
+
+            val result = ApiClientCreator.createApiClient()
+            projectRepository.save(project.addApiClient(result.apiClient))
+            result
+        }
+
+    suspend fun getProjectApiClients(
+        projectId: ProjectId,
+        actorId: UserId,
+    ): List<ApiClient> =
+        projectTransaction.runInTransaction {
+            val project =
+                projectRepository.findById(projectId) ?: throw NotFoundException("Project not found: $projectId")
+
+            if (!project.canManageApiClients(actorId)) {
+                throw ForbiddenOperationException("Only admins can view API clients")
+            }
+
+            project.apiClients
         }
 
     suspend fun deleteApiClient(
         projectId: ProjectId,
         clientId: Uuid,
+        actorId: UserId,
     ) {
         projectTransaction.runInTransaction {
             val project =
                 projectRepository.findById(projectId) ?: throw NotFoundException("Project not found: $projectId")
+
+            if (!project.canManageApiClients(actorId)) {
+                throw ForbiddenOperationException("Only admins can manage API clients")
+            }
+
             val clientToRemove =
                 project.apiClients.find { it.clientId == clientId }
                     ?: throw IllegalArgumentException("Client not found: $clientId")
@@ -117,4 +180,21 @@ class ProjectService(
             }
         }
     }
+
+    suspend fun deleteProject(
+        projectId: ProjectId,
+        actorId: UserId,
+    ) {
+        projectTransaction.runInTransaction {
+            val project =
+                projectRepository.findById(projectId) ?: throw NotFoundException("Project not found: $projectId")
+
+            if (!project.canDelete(actorId)) {
+                throw ForbiddenOperationException("Only the owner can delete this project")
+            }
+
+            projectRepository.delete(projectId)
+        }
+    }
 }
+

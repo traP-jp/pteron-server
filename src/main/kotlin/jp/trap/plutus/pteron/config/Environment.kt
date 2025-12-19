@@ -19,6 +19,7 @@ object Environment {
         runCatching { DATABASE_URL }.onFailure { missingVars.add("DATABASE_URL") }
         runCatching { DATABASE_USER }.onFailure { missingVars.add("DATABASE_USER") }
         runCatching { DATABASE_PASSWORD }.onFailure { missingVars.add("DATABASE_PASSWORD") }
+        runCatching { GRPC_TOKEN }.onFailure { missingVars.add("GRPC_TOKEN") }
 
         if (missingVars.isNotEmpty()) {
             throw IllegalStateException(

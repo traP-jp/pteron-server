@@ -6,7 +6,9 @@ import jp.trap.plutus.pteron.features.account.domain.model.Account
 interface EconomicGateway {
     suspend fun findAccountById(accountId: AccountId): Account?
 
-    suspend fun transfar(
+    suspend fun findAccountsByIds(accountIds: List<AccountId>): List<Account>
+
+    suspend fun transfer(
         from: AccountId,
         to: AccountId,
         amount: Long,

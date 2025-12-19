@@ -21,6 +21,7 @@ protobuf = "4.33.2"
 grpc = "1.77.0"
 grpc-kotlin = "1.5.0"
 protobuf-plugin = "0.9.5"
+jbcrypt = "0.4"
 
 [plugins]
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
@@ -89,6 +90,7 @@ flyway-mysql = { module = "org.flywaydb:flyway-mysql", version.ref = "flyway" }
 
 # Utils
 uuid-creator = { module = "com.github.f4b6a3:uuid-creator", version.ref = "uuid-creator" }
+jbcrypt = { module = "org.mindrot:jbcrypt", version.ref = "jbcrypt" }
 
 # gRPC
 grpc-netty = { module = "io.grpc:grpc-netty", version.ref = "grpc" }
