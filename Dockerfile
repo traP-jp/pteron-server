@@ -11,7 +11,7 @@ COPY settings.gradle.kts settings.gradle.kts
 COPY gradle.properties gradle.properties
 
 # 依存関係のダウンロード
-RUN sed -i 's/\r$//' gradlew && chmod +x gradlew && ./gradlew dependencies --no-daemon
+RUN gradlew && chmod +x gradlew && ./gradlew dependencies --no-daemon
 
 # ソースコードをコピーしてビルド
 COPY src src
