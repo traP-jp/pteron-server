@@ -3,7 +3,7 @@ package jp.trap.plutus.pteron.features.transaction.controller
 import io.ktor.server.resources.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
-import jp.trap.plutus.pteron.common.domain.model.ProjectId
+import jp.trap.plutus.pteron.common.domain.model.AccountId
 import jp.trap.plutus.pteron.common.domain.model.UserId
 import jp.trap.plutus.pteron.features.account.domain.model.Account
 import jp.trap.plutus.pteron.features.account.service.AccountService
@@ -20,7 +20,6 @@ import org.koin.ktor.ext.inject
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.days
 import kotlin.time.Duration.Companion.hours
-import kotlin.uuid.Uuid
 import jp.trap.plutus.pteron.openapi.internal.models.Project as ProjectDto
 import jp.trap.plutus.pteron.openapi.internal.models.Transaction as TransactionDto
 import jp.trap.plutus.pteron.openapi.internal.models.User as UserDto
@@ -95,15 +94,18 @@ private suspend fun createTransactionDtos(
 ): List<TransactionDto> {
     if (transactions.isEmpty()) return emptyList()
 
-    // ユーザー情報を一括取得
-    val userIds = transactions.map { it.userId }.distinct()
-    val users = userService.getUsersByIds(userIds)
-    val userMap = users.associateBy { it.id }
-
     // プロジェクト情報を一括取得
     val projectIds = transactions.map { it.projectId }.distinct()
     val projects = projectService.getProjectsByIds(projectIds)
     val projectMap = projects.associateBy { it.id }
+
+    // ユーザー情報を一括取得
+    val transactionUserIds = transactions.map { it.userId }
+    val projectOwnerIds = projects.map { it.ownerId }
+    val projectAdminIds = projects.flatMap { it.adminIds }
+    val userIds = (transactionUserIds + projectOwnerIds + projectAdminIds).distinct()
+    val users = userService.getUsersByIds(userIds)
+    val userMap = users.associateBy { it.id }
 
     // アカウント情報を一括取得
     val accountIds = (users.map { it.accountId } + projects.map { it.accountId }).distinct()
@@ -111,14 +113,18 @@ private suspend fun createTransactionDtos(
     val accountMap = accounts.associateBy { it.accountId }
 
     return transactions.map { transaction ->
-        val user = userMap[transaction.userId]
-            ?: throw IllegalStateException("User not found: ${transaction.userId}")
-        val project = projectMap[transaction.projectId]
-            ?: throw IllegalStateException("Project not found: ${transaction.projectId}")
-        val userAccount = accountMap[user.accountId]
-            ?: throw IllegalStateException("User account not found: ${user.accountId}")
-        val projectAccount = accountMap[project.accountId]
-            ?: throw IllegalStateException("Project account not found: ${project.accountId}")
+        val user =
+            userMap[transaction.userId]
+                ?: throw IllegalStateException("User not found: ${transaction.userId}")
+        val project =
+            projectMap[transaction.projectId]
+                ?: throw IllegalStateException("Project not found: ${transaction.projectId}")
+        val userAccount =
+            accountMap[user.accountId]
+                ?: throw IllegalStateException("User account not found: ${user.accountId}")
+        val projectAccount =
+            accountMap[project.accountId]
+                ?: throw IllegalStateException("Project account not found: ${project.accountId}")
 
         createTransactionDto(transaction, user, userAccount, project, projectAccount, userMap, accountMap)
     }
@@ -131,7 +137,7 @@ private fun createTransactionDto(
     project: Project,
     projectAccount: Account,
     userMap: Map<UserId, User>,
-    accountMap: Map<jp.trap.plutus.pteron.common.domain.model.AccountId, Account>,
+    accountMap: Map<AccountId, Account>,
 ): TransactionDto =
     TransactionDto(
         id = transaction.id.value,
@@ -157,18 +163,21 @@ private fun createProjectDto(
     project: Project,
     projectAccount: Account,
     userMap: Map<UserId, User>,
-    accountMap: Map<jp.trap.plutus.pteron.common.domain.model.AccountId, Account>,
+    accountMap: Map<AccountId, Account>,
 ): ProjectDto {
-    val owner = userMap[project.ownerId]
-        ?: throw IllegalStateException("Owner not found: ${project.ownerId}")
-    val ownerAccount = accountMap[owner.accountId]
-        ?: throw IllegalStateException("Owner account not found: ${owner.accountId}")
+    val owner =
+        userMap[project.ownerId]
+            ?: throw IllegalStateException("Owner not found: ${project.ownerId}")
+    val ownerAccount =
+        accountMap[owner.accountId]
+            ?: throw IllegalStateException("Owner account not found: ${owner.accountId}")
 
-    val adminDtos = project.adminIds.mapNotNull { adminId ->
-        val admin = userMap[adminId] ?: return@mapNotNull null
-        val adminAccount = accountMap[admin.accountId] ?: return@mapNotNull null
-        createUserDto(admin, adminAccount)
-    }
+    val adminDtos =
+        project.adminIds.mapNotNull { adminId ->
+            val admin = userMap[adminId] ?: return@mapNotNull null
+            val adminAccount = accountMap[admin.accountId] ?: return@mapNotNull null
+            createUserDto(admin, adminAccount)
+        }
 
     return ProjectDto(
         id = project.id.value,
