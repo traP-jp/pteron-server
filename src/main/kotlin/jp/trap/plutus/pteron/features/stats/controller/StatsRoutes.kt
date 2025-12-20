@@ -67,7 +67,8 @@ fun Route.statsRoutes() {
         val stats = statsService.getProjectsStats(term)
 
         call.respond(
-            GetProjectsStats200Response(
+            GetUsersStats200Response(
+                // Same structure as users stats
                 number = stats.number,
                 balance = stats.balance,
                 difference = stats.difference,
@@ -98,13 +99,12 @@ fun Route.statsRoutes() {
         val accountMap = accounts.associateBy { it.accountId }
 
         val items =
-            result.items.mapNotNull { entry ->
-                val user = userMap[entry.userId] ?: return@mapNotNull null
-                val account = accountMap[user.accountId] ?: return@mapNotNull null
-                val rank = statsService.getUserRank(entry.userId, term, rankingType, ascending) ?: return@mapNotNull null
+            result.items.mapIndexedNotNull { index, entry ->
+                val user = userMap[entry.userId] ?: return@mapIndexedNotNull null
+                val account = accountMap[user.accountId] ?: return@mapIndexedNotNull null
 
                 GetUserRankings200ResponseItemsInner(
-                    rank = rank,
+                    rank = index + 1L,
                     value = entry.rankValue,
                     difference = entry.difference,
                     user = createUserDto(user, account),
@@ -146,13 +146,12 @@ fun Route.statsRoutes() {
         val accountMap = accounts.associateBy { it.accountId }
 
         val items =
-            result.items.mapNotNull { entry ->
-                val project = projectMap[entry.projectId] ?: return@mapNotNull null
-                val projectAccount = accountMap[project.accountId] ?: return@mapNotNull null
-                val rank = statsService.getProjectRank(entry.projectId, term, rankingType, ascending) ?: return@mapNotNull null
+            result.items.mapIndexedNotNull { index, entry ->
+                val project = projectMap[entry.projectId] ?: return@mapIndexedNotNull null
+                val projectAccount = accountMap[project.accountId] ?: return@mapIndexedNotNull null
 
                 GetProjectRankings200ResponseItemsInner(
-                    rank = rank,
+                    rank = index + 1L,
                     value = entry.rankValue,
                     difference = entry.difference,
                     project = createProjectDto(project, projectAccount, userMap, accountMap),
@@ -177,28 +176,23 @@ fun Route.statsRoutes() {
 
         val userDto = createUserDto(user, account)
 
-        suspend fun createRankingItem(
-            rankingType: RankingType,
-            entry: UserRankingEntry?,
-        ): GetUserRankings200ResponseItemsInner {
-            val rank = statsService.getUserRank(user.id, term, rankingType) ?: 0L
-            return GetUserRankings200ResponseItemsInner(
-                rank = rank,
+        fun createRankingItem(entry: UserRankingEntry?): GetUserRankings200ResponseItemsInner =
+            GetUserRankings200ResponseItemsInner(
+                rank = 0L, // 実際のランクは別途計算が必要
                 value = entry?.rankValue ?: 0L,
                 difference = entry?.difference ?: 0L,
                 user = userDto,
             )
-        }
 
         call.respond(
             GetUserStats200Response(
-                balance = createRankingItem(RankingType.BALANCE, stats[RankingType.BALANCE]),
-                difference = createRankingItem(RankingType.DIFFERENCE, stats[RankingType.DIFFERENCE]),
-                `in` = createRankingItem(RankingType.IN, stats[RankingType.IN]),
-                `out` = createRankingItem(RankingType.OUT, stats[RankingType.OUT]),
-                count = createRankingItem(RankingType.COUNT, stats[RankingType.COUNT]),
-                total = createRankingItem(RankingType.TOTAL, stats[RankingType.TOTAL]),
-                ratio = createRankingItem(RankingType.RATIO, stats[RankingType.RATIO]),
+                balance = createRankingItem(stats[RankingType.BALANCE]),
+                difference = createRankingItem(stats[RankingType.DIFFERENCE]),
+                `in` = createRankingItem(stats[RankingType.IN]),
+                `out` = createRankingItem(stats[RankingType.OUT]),
+                count = createRankingItem(stats[RankingType.COUNT]),
+                total = createRankingItem(stats[RankingType.TOTAL]),
+                ratio = createRankingItem(stats[RankingType.RATIO]),
             ),
         )
     }
@@ -223,28 +217,23 @@ fun Route.statsRoutes() {
         val projectAccount = accountMap[project.accountId]!!
         val projectDto = createProjectDto(project, projectAccount, userMap, accountMap)
 
-        suspend fun createRankingItem(
-            rankingType: RankingType,
-            entry: ProjectRankingEntry?,
-        ): GetProjectRankings200ResponseItemsInner {
-            val rank = statsService.getProjectRank(project.id, term, rankingType) ?: 0L
-            return GetProjectRankings200ResponseItemsInner(
-                rank = rank,
+        fun createRankingItem(entry: ProjectRankingEntry?): GetProjectRankings200ResponseItemsInner =
+            GetProjectRankings200ResponseItemsInner(
+                rank = 0L,
                 value = entry?.rankValue ?: 0L,
                 difference = entry?.difference ?: 0L,
                 project = projectDto,
             )
-        }
 
         call.respond(
             GetProjectStats200Response(
-                balance = createRankingItem(RankingType.BALANCE, stats[RankingType.BALANCE]),
-                difference = createRankingItem(RankingType.DIFFERENCE, stats[RankingType.DIFFERENCE]),
-                `in` = createRankingItem(RankingType.IN, stats[RankingType.IN]),
-                `out` = createRankingItem(RankingType.OUT, stats[RankingType.OUT]),
-                count = createRankingItem(RankingType.COUNT, stats[RankingType.COUNT]),
-                total = createRankingItem(RankingType.TOTAL, stats[RankingType.TOTAL]),
-                ratio = createRankingItem(RankingType.RATIO, stats[RankingType.RATIO]),
+                balance = createRankingItem(stats[RankingType.BALANCE]),
+                difference = createRankingItem(stats[RankingType.DIFFERENCE]),
+                `in` = createRankingItem(stats[RankingType.IN]),
+                `out` = createRankingItem(stats[RankingType.OUT]),
+                count = createRankingItem(stats[RankingType.COUNT]),
+                total = createRankingItem(stats[RankingType.TOTAL]),
+                ratio = createRankingItem(stats[RankingType.RATIO]),
             ),
         )
     }

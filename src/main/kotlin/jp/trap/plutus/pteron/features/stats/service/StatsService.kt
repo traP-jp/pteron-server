@@ -100,30 +100,4 @@ class StatsService(
                     }
                 }.toMap()
         }
-
-    /**
-     * 特定ユーザーの順位を取得
-     */
-    suspend fun getUserRank(
-        userId: UserId,
-        term: StatsTerm,
-        rankingType: RankingType,
-        ascending: Boolean = false,
-    ): Long? =
-        unitOfWork.runInTransaction {
-            statsCacheRepository.getUserRank(term, rankingType, userId, ascending)
-        }
-
-    /**
-     * 特定プロジェクトの順位を取得
-     */
-    suspend fun getProjectRank(
-        projectId: ProjectId,
-        term: StatsTerm,
-        rankingType: RankingType,
-        ascending: Boolean = false,
-    ): Long? =
-        unitOfWork.runInTransaction {
-            statsCacheRepository.getProjectRank(term, rankingType, projectId, ascending)
-        }
 }

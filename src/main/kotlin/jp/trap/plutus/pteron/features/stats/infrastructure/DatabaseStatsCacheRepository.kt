@@ -17,6 +17,8 @@ import java.util.UUID as JavaUuid
 
 @Single
 class DatabaseStatsCacheRepository : StatsCacheRepository {
+    // --- Read operations ---
+
     override suspend fun getSystemStats(term: StatsTerm): SystemStats? =
         StatsCacheSystemTable
             .selectAll()
@@ -80,7 +82,7 @@ class DatabaseStatsCacheRepository : StatsCacheRepository {
     ): RankingQueryResult<UserRankingEntry> {
         val sortOrder = if (ascending) SortOrder.ASC else SortOrder.DESC
 
-        // cursor format: "rankValue:userId"
+        // Parse cursor (format: "rankValue:userId")
         val cursorCondition: Op<Boolean> =
             if (cursor != null) {
                 val parts = cursor.split(":")
@@ -261,6 +263,8 @@ class DatabaseStatsCacheRepository : StatsCacheRepository {
                 )
             }
 
+    // --- Write operations ---
+
     override suspend fun saveSystemStats(stats: SystemStats) {
         StatsCacheSystemTable.upsert {
             it[term] = stats.term.value
@@ -345,91 +349,5 @@ class DatabaseStatsCacheRepository : StatsCacheRepository {
             (StatsCacheProjectRankingsTable.term eq term.value) and
                 (StatsCacheProjectRankingsTable.rankingType eq rankingType.value)
         }
-    }
-
-    @OptIn(ExperimentalUuidApi::class)
-    override suspend fun getUserRank(
-        term: StatsTerm,
-        rankingType: RankingType,
-        userId: UserId,
-        ascending: Boolean,
-    ): Long? {
-        val userEntry =
-            StatsCacheUserRankingsTable
-                .selectAll()
-                .where {
-                    (StatsCacheUserRankingsTable.term eq term.value) and
-                        (StatsCacheUserRankingsTable.rankingType eq rankingType.value) and
-                        (StatsCacheUserRankingsTable.userId eq userId.value.toJavaUuid())
-                }.singleOrNull() ?: return null
-
-        val userRankValue = userEntry[StatsCacheUserRankingsTable.rankValue]
-        val userUuid = userEntry[StatsCacheUserRankingsTable.userId]
-
-        val countHigher =
-            StatsCacheUserRankingsTable
-                .selectAll()
-                .where {
-                    (StatsCacheUserRankingsTable.term eq term.value) and
-                        (StatsCacheUserRankingsTable.rankingType eq rankingType.value) and
-                        if (ascending) {
-                            (StatsCacheUserRankingsTable.rankValue less userRankValue) or
-                                (
-                                    (StatsCacheUserRankingsTable.rankValue eq userRankValue) and
-                                        (StatsCacheUserRankingsTable.userId less userUuid)
-                                )
-                        } else {
-                            (StatsCacheUserRankingsTable.rankValue greater userRankValue) or
-                                (
-                                    (StatsCacheUserRankingsTable.rankValue eq userRankValue) and
-                                        (StatsCacheUserRankingsTable.userId greater userUuid)
-                                )
-                        }
-                }.count()
-
-        return countHigher + 1
-    }
-
-    @OptIn(ExperimentalUuidApi::class)
-    override suspend fun getProjectRank(
-        term: StatsTerm,
-        rankingType: RankingType,
-        projectId: ProjectId,
-        ascending: Boolean,
-    ): Long? {
-        val projectEntry =
-            StatsCacheProjectRankingsTable
-                .selectAll()
-                .where {
-                    (StatsCacheProjectRankingsTable.term eq term.value) and
-                        (StatsCacheProjectRankingsTable.rankingType eq rankingType.value) and
-                        (StatsCacheProjectRankingsTable.projectId eq projectId.value.toJavaUuid())
-                }.singleOrNull() ?: return null
-
-        val projectRankValue = projectEntry[StatsCacheProjectRankingsTable.rankValue]
-        val projectUuid = projectEntry[StatsCacheProjectRankingsTable.projectId]
-
-        val countHigher =
-            StatsCacheProjectRankingsTable
-                .selectAll()
-                .where {
-                    (StatsCacheProjectRankingsTable.term eq term.value) and
-                        (StatsCacheProjectRankingsTable.rankingType eq rankingType.value) and
-                        if (ascending) {
-                            (StatsCacheProjectRankingsTable.rankValue less projectRankValue) or
-                                (
-                                    (StatsCacheProjectRankingsTable.rankValue eq projectRankValue) and
-                                        (StatsCacheProjectRankingsTable.projectId less projectUuid)
-                                )
-                        } else {
-                            (StatsCacheProjectRankingsTable.rankValue greater projectRankValue) or
-                                (
-                                    (StatsCacheProjectRankingsTable.rankValue eq projectRankValue) and
-                                        (StatsCacheProjectRankingsTable.projectId greater projectUuid)
-                                )
-                        }
-                }.count()
-
-        return countHigher + 1
     }
 }

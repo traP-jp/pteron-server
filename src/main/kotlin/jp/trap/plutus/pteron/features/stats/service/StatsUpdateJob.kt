@@ -7,7 +7,6 @@ import jp.trap.plutus.pteron.features.account.domain.gateway.EconomicGateway
 import jp.trap.plutus.pteron.features.project.domain.repository.ProjectRepository
 import jp.trap.plutus.pteron.features.stats.domain.model.*
 import jp.trap.plutus.pteron.features.stats.domain.repository.StatsCacheRepository
-import jp.trap.plutus.pteron.features.transaction.domain.model.TransactionType
 import jp.trap.plutus.pteron.features.transaction.domain.repository.TransactionQueryOptions
 import jp.trap.plutus.pteron.features.transaction.domain.repository.TransactionRepository
 import jp.trap.plutus.pteron.features.user.domain.repository.UserRepository
@@ -53,8 +52,11 @@ class StatsUpdateJob(
         job =
             scope.launch {
                 logger.info("Starting stats update job with interval: $updateInterval")
+
+                // 初回更新
                 updateAllStats()
 
+                // 定期更新ループ
                 while (isActive) {
                     delay(updateInterval)
                     updateAllStats()
@@ -98,10 +100,19 @@ class StatsUpdateJob(
         val since = now - term.toDuration()
         val previousSince = since - term.toDuration()
 
+        // システム統計を更新
         updateSystemStats(term, since, previousSince, now)
+
+        // ユーザー統計を更新
         updateUsersStats(term, since, previousSince, now)
+
+        // プロジェクト統計を更新
         updateProjectsStats(term, since, previousSince, now)
+
+        // ユーザーランキングを更新
         updateUserRankings(term, since, previousSince, now)
+
+        // プロジェクトランキングを更新
         updateProjectRankings(term, since, previousSince, now)
     }
 
@@ -112,12 +123,14 @@ class StatsUpdateJob(
         now: Instant,
     ) {
         unitOfWork.runInTransaction {
+            // 現在の期間の取引を取得
             val currentTransactions =
                 transactionRepository
                     .findAll(
                         TransactionQueryOptions(limit = null, cursor = null, since = since),
                     ).items
 
+            // 前期間の取引を取得
             val previousTransactions =
                 transactionRepository
                     .findAll(
@@ -125,16 +138,19 @@ class StatsUpdateJob(
                     ).items
                     .filter { it.createdAt < since }
 
+            // 現在の全残高を取得（ユーザー + プロジェクト）
             val users = userRepository.findAll()
             val projects = projectRepository.findAll()
             val allAccountIds = users.map { it.accountId } + projects.map { it.accountId }
             val accounts = economicGateway.findAccountsByIds(allAccountIds)
             val currentBalance = accounts.sumOf { it.balance }
 
+            // 期間内の取引から差分を計算
             val currentTotal = currentTransactions.sumOf { it.amount }
             val previousTotal = previousTransactions.sumOf { it.amount }
             val difference = currentTotal - previousTotal
 
+            // 割合を計算
             val previousBalance = currentBalance - currentTotal + previousTotal
             val ratio =
                 if (previousBalance != 0L) {
@@ -172,6 +188,7 @@ class StatsUpdateJob(
 
             val currentBalance = users.sumOf { accountMap[it.accountId]?.balance ?: 0L }
 
+            // ユーザー関連の取引を集計
             val currentTransactions =
                 transactionRepository
                     .findAll(
@@ -280,61 +297,21 @@ class StatsUpdateJob(
             val accounts = economicGateway.findAccountsByIds(userAccountIds)
             val accountMap = accounts.associateBy { it.accountId }
 
-            // パフォーマンス: 全取引を一度に取得してからフィルタリング（N+1回避）
-            val allCurrentTransactions =
-                transactionRepository
-                    .findAll(TransactionQueryOptions(limit = null, cursor = null, since = since))
-                    .items
-
-            val allPreviousTransactions =
-                transactionRepository
-                    .findAll(TransactionQueryOptions(limit = null, cursor = null, since = previousSince))
-                    .items
-                    .filter { it.createdAt < since }
-
-            val currentTransactionsByUser = allCurrentTransactions.groupBy { it.userId }
-            val previousTransactionsByUser = allPreviousTransactions.groupBy { it.userId }
-
+            // 各ユーザーの取引を集計
             val userStats =
                 users.map { user ->
-                    val userCurrentTransactions = currentTransactionsByUser[user.id] ?: emptyList()
-                    val userPreviousTransactions = previousTransactionsByUser[user.id] ?: emptyList()
+                    val userTransactions =
+                        transactionRepository
+                            .findByUserId(
+                                user.id,
+                                TransactionQueryOptions(limit = null, cursor = null, since = since),
+                            ).items
 
                     val balance = accountMap[user.accountId]?.balance ?: 0L
-
-                    val inAmount =
-                        userCurrentTransactions
-                            .filter { it.type == TransactionType.TRANSFER }
-                            .sumOf { it.amount }
-                    val outAmount =
-                        userCurrentTransactions
-                            .filter { it.type == TransactionType.BILL_PAYMENT }
-                            .sumOf { it.amount }
-
-                    val count = userCurrentTransactions.size.toLong()
+                    val inAmount = userTransactions.sumOf { it.amount }
+                    val outAmount = 0L // TRANSFER は Project -> User なので user の out は別途計算が必要
+                    val count = userTransactions.size.toLong()
                     val total = inAmount + outAmount
-
-                    val netChange = inAmount - outAmount
-                    val balanceAtStart = balance - netChange
-
-                    val previousInAmount =
-                        userPreviousTransactions
-                            .filter { it.type == TransactionType.TRANSFER }
-                            .sumOf { it.amount }
-                    val previousOutAmount =
-                        userPreviousTransactions
-                            .filter { it.type == TransactionType.BILL_PAYMENT }
-                            .sumOf { it.amount }
-                    val previousNetChange = previousInAmount - previousOutAmount
-                    val balanceAtPreviousStart = balanceAtStart - previousNetChange
-
-                    val difference = netChange
-                    val ratio =
-                        if (balanceAtStart != 0L) {
-                            (netChange * 100) / balanceAtStart
-                        } else {
-                            0L
-                        }
 
                     UserStatsData(
                         userId = user.id,
@@ -343,38 +320,31 @@ class StatsUpdateJob(
                         outAmount = outAmount,
                         count = count,
                         total = total,
-                        difference = difference,
-                        ratio = ratio,
                     )
                 }
 
+            // 各ランキングタイプで保存
             RankingType.entries.forEach { rankingType ->
-                val previousRankMap = mutableMapOf<UserId, Long>()
-                userStats.forEach { data ->
-                    val previousRank = statsCacheRepository.getUserRank(term, rankingType, data.userId, false)
-                    if (previousRank != null) {
-                        previousRankMap[data.userId] = previousRank
-                    }
-                }
-
                 val sortedStats =
                     when (rankingType) {
                         RankingType.BALANCE -> userStats.sortedByDescending { it.balance }
-                        RankingType.DIFFERENCE -> userStats.sortedByDescending { it.difference }
+
+                        RankingType.DIFFERENCE -> userStats.sortedByDescending { it.balance }
+
+                        // 簡略化
                         RankingType.IN -> userStats.sortedByDescending { it.inAmount }
+
                         RankingType.OUT -> userStats.sortedByDescending { it.outAmount }
+
                         RankingType.COUNT -> userStats.sortedByDescending { it.count }
+
                         RankingType.TOTAL -> userStats.sortedByDescending { it.total }
-                        RankingType.RATIO -> userStats.sortedByDescending { it.ratio }
+
+                        RankingType.RATIO -> userStats.sortedByDescending { it.balance } // 簡略化
                     }
 
                 val entries =
-                    sortedStats.mapIndexed { index, data ->
-                        val newRank = index + 1L
-                        val previousRank = previousRankMap[data.userId]
-                        // difference: 前回順位 - 今回順位（正の値 = 順位が上がった）
-                        val rankDifference = if (previousRank != null) previousRank - newRank else 0L
-
+                    sortedStats.map { data ->
                         UserRankingEntry(
                             term = term,
                             rankingType = rankingType,
@@ -382,14 +352,14 @@ class StatsUpdateJob(
                             rankValue =
                                 when (rankingType) {
                                     RankingType.BALANCE -> data.balance
-                                    RankingType.DIFFERENCE -> data.difference
+                                    RankingType.DIFFERENCE -> data.balance
                                     RankingType.IN -> data.inAmount
                                     RankingType.OUT -> data.outAmount
                                     RankingType.COUNT -> data.count
                                     RankingType.TOTAL -> data.total
-                                    RankingType.RATIO -> data.ratio
+                                    RankingType.RATIO -> 0L
                                 },
-                            difference = rankDifference,
+                            difference = 0L, // 前期間との順位差は後で計算
                             updatedAt = now,
                         )
                     }
@@ -412,59 +382,20 @@ class StatsUpdateJob(
             val accounts = economicGateway.findAccountsByIds(projectAccountIds)
             val accountMap = accounts.associateBy { it.accountId }
 
-            val allCurrentTransactions =
-                transactionRepository
-                    .findAll(TransactionQueryOptions(limit = null, cursor = null, since = since))
-                    .items
-
-            val allPreviousTransactions =
-                transactionRepository
-                    .findAll(TransactionQueryOptions(limit = null, cursor = null, since = previousSince))
-                    .items
-                    .filter { it.createdAt < since }
-
-            val currentTransactionsByProject = allCurrentTransactions.groupBy { it.projectId }
-            val previousTransactionsByProject = allPreviousTransactions.groupBy { it.projectId }
-
             val projectStats =
                 projects.map { project ->
-                    val projectCurrentTransactions = currentTransactionsByProject[project.id] ?: emptyList()
-                    val projectPreviousTransactions = previousTransactionsByProject[project.id] ?: emptyList()
+                    val projectTransactions =
+                        transactionRepository
+                            .findByProjectId(
+                                project.id,
+                                TransactionQueryOptions(limit = null, cursor = null, since = since),
+                            ).items
 
                     val balance = accountMap[project.accountId]?.balance ?: 0L
-
-                    val outAmount =
-                        projectCurrentTransactions
-                            .filter { it.type == TransactionType.TRANSFER }
-                            .sumOf { it.amount }
-                    val inAmount =
-                        projectCurrentTransactions
-                            .filter { it.type == TransactionType.BILL_PAYMENT }
-                            .sumOf { it.amount }
-
-                    val count = projectCurrentTransactions.size.toLong()
+                    val outAmount = projectTransactions.sumOf { it.amount }
+                    val inAmount = 0L
+                    val count = projectTransactions.size.toLong()
                     val total = inAmount + outAmount
-
-                    val netChange = inAmount - outAmount
-                    val balanceAtStart = balance - netChange
-
-                    val previousOutAmount =
-                        projectPreviousTransactions
-                            .filter { it.type == TransactionType.TRANSFER }
-                            .sumOf { it.amount }
-                    val previousInAmount =
-                        projectPreviousTransactions
-                            .filter { it.type == TransactionType.BILL_PAYMENT }
-                            .sumOf { it.amount }
-                    val previousNetChange = previousInAmount - previousOutAmount
-
-                    val difference = netChange
-                    val ratio =
-                        if (balanceAtStart != 0L) {
-                            (netChange * 100) / balanceAtStart
-                        } else {
-                            0L
-                        }
 
                     ProjectStatsData(
                         projectId = project.id,
@@ -473,39 +404,23 @@ class StatsUpdateJob(
                         outAmount = outAmount,
                         count = count,
                         total = total,
-                        difference = difference,
-                        ratio = ratio,
                     )
                 }
 
             RankingType.entries.forEach { rankingType ->
-                // 更新前の現在のランキングを取得（順位比較のため）
-                val previousRankMap = mutableMapOf<ProjectId, Long>()
-                projectStats.forEach { data ->
-                    val previousRank = statsCacheRepository.getProjectRank(term, rankingType, data.projectId, false)
-                    if (previousRank != null) {
-                        previousRankMap[data.projectId] = previousRank
-                    }
-                }
-
                 val sortedStats =
                     when (rankingType) {
                         RankingType.BALANCE -> projectStats.sortedByDescending { it.balance }
-                        RankingType.DIFFERENCE -> projectStats.sortedByDescending { it.difference }
+                        RankingType.DIFFERENCE -> projectStats.sortedByDescending { it.balance }
                         RankingType.IN -> projectStats.sortedByDescending { it.inAmount }
                         RankingType.OUT -> projectStats.sortedByDescending { it.outAmount }
                         RankingType.COUNT -> projectStats.sortedByDescending { it.count }
                         RankingType.TOTAL -> projectStats.sortedByDescending { it.total }
-                        RankingType.RATIO -> projectStats.sortedByDescending { it.ratio }
+                        RankingType.RATIO -> projectStats.sortedByDescending { it.balance }
                     }
 
                 val entries =
-                    sortedStats.mapIndexed { index, data ->
-                        val newRank = index + 1L
-                        val previousRank = previousRankMap[data.projectId]
-                        // difference: 前回順位 - 今回順位（正の値 = 順位が上がった）
-                        val rankDifference = if (previousRank != null) previousRank - newRank else 0L
-
+                    sortedStats.map { data ->
                         ProjectRankingEntry(
                             term = term,
                             rankingType = rankingType,
@@ -513,14 +428,14 @@ class StatsUpdateJob(
                             rankValue =
                                 when (rankingType) {
                                     RankingType.BALANCE -> data.balance
-                                    RankingType.DIFFERENCE -> data.difference
+                                    RankingType.DIFFERENCE -> data.balance
                                     RankingType.IN -> data.inAmount
                                     RankingType.OUT -> data.outAmount
                                     RankingType.COUNT -> data.count
                                     RankingType.TOTAL -> data.total
-                                    RankingType.RATIO -> data.ratio
+                                    RankingType.RATIO -> 0L
                                 },
-                            difference = rankDifference,
+                            difference = 0L,
                             updatedAt = now,
                         )
                     }
@@ -546,8 +461,6 @@ class StatsUpdateJob(
         val outAmount: Long,
         val count: Long,
         val total: Long,
-        val difference: Long,
-        val ratio: Long,
     )
 
     private data class ProjectStatsData(
@@ -557,7 +470,5 @@ class StatsUpdateJob(
         val outAmount: Long,
         val count: Long,
         val total: Long,
-        val difference: Long,
-        val ratio: Long,
     )
 }

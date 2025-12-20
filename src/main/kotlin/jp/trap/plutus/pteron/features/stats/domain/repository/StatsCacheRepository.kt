@@ -16,6 +16,8 @@ data class RankingQueryResult<T>(
  * 統計キャッシュリポジトリ
  */
 interface StatsCacheRepository {
+    // --- Read operations (for API) ---
+
     suspend fun getSystemStats(term: StatsTerm): SystemStats?
 
     suspend fun getUsersStats(term: StatsTerm): UsersStats?
@@ -71,18 +73,4 @@ interface StatsCacheRepository {
         term: StatsTerm,
         rankingType: RankingType,
     )
-
-    suspend fun getUserRank(
-        term: StatsTerm,
-        rankingType: RankingType,
-        userId: UserId,
-        ascending: Boolean = false,
-    ): Long?
-
-    suspend fun getProjectRank(
-        term: StatsTerm,
-        rankingType: RankingType,
-        projectId: ProjectId,
-        ascending: Boolean = false,
-    ): Long?
 }
