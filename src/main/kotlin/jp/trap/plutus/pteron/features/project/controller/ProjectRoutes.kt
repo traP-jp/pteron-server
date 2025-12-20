@@ -5,7 +5,6 @@ import io.ktor.server.request.*
 import io.ktor.server.resources.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.Route
-import jp.trap.plutus.pteron.common.domain.model.UserId
 import jp.trap.plutus.pteron.features.account.domain.model.Account
 import jp.trap.plutus.pteron.features.account.service.AccountService
 import jp.trap.plutus.pteron.features.project.domain.model.ApiClient
@@ -89,9 +88,9 @@ fun Route.projectRoutes() {
     post<Paths.addProjectAdmin> { params ->
         val project = projectService.getProject(params.projectId)
         val request = call.receive<AddProjectAdminRequest>()
-        val userId = UserId(Uuid.parse(request.userId))
+        val targetUser = userService.getUser(request.userId)
         val currentUser = userService.getUserByName(call.trapId)
-        projectService.addProjectAdmin(project.id, userId, currentUser.id)
+        projectService.addProjectAdmin(project.id, targetUser.id, currentUser.id)
         call.respond(HttpStatusCode.NoContent)
     }
 
@@ -99,9 +98,9 @@ fun Route.projectRoutes() {
     delete<Paths.removeProjectAdmin> { params ->
         val project = projectService.getProject(params.projectId)
         val request = call.receive<AddProjectAdminRequest>()
-        val userId = UserId(Uuid.parse(request.userId))
+        val targetUser = userService.getUser(request.userId)
         val currentUser = userService.getUserByName(call.trapId)
-        projectService.deleteProjectAdmin(project.id, userId, currentUser.id)
+        projectService.deleteProjectAdmin(project.id, targetUser.id, currentUser.id)
         call.respond(HttpStatusCode.NoContent)
     }
 
