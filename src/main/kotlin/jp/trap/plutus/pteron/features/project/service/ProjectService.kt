@@ -1,9 +1,9 @@
 package jp.trap.plutus.pteron.features.project.service
 
 import com.github.f4b6a3.uuid.UuidCreator
+import jp.trap.plutus.pteron.common.domain.UnitOfWork
 import jp.trap.plutus.pteron.common.domain.model.ProjectId
 import jp.trap.plutus.pteron.common.domain.model.UserId
-import jp.trap.plutus.pteron.common.domain.UnitOfWork
 import jp.trap.plutus.pteron.common.exception.BadRequestException
 import jp.trap.plutus.pteron.common.exception.ForbiddenException
 import jp.trap.plutus.pteron.common.exception.NotFoundException
@@ -22,7 +22,9 @@ class ProjectService(
     private val economicGateway: EconomicGateway,
     private val unitOfWork: UnitOfWork,
 ) {
-    suspend fun getProjects(): List<Project> = projectRepository.findAll()
+    suspend fun getProjects(): List<Project> = unitOfWork.runInTransaction {
+        projectRepository.findAll()
+    }
 
     suspend fun getProjectsByIds(projectIds: List<ProjectId>): List<Project> =
         unitOfWork.runInTransaction {
