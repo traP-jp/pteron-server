@@ -14,6 +14,7 @@ import io.ktor.server.plugins.contentnegotiation.*
 import io.ktor.server.plugins.defaultheaders.*
 import io.ktor.server.plugins.hsts.*
 import io.ktor.server.plugins.statuspages.*
+import io.ktor.server.request.*
 import io.ktor.server.resources.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
@@ -21,7 +22,6 @@ import jp.trap.plutus.api.CornucopiaServiceGrpcKt.CornucopiaServiceCoroutineStub
 import jp.trap.plutus.pteron.auth.bearerAuth
 import jp.trap.plutus.pteron.auth.forwardAuth
 import jp.trap.plutus.pteron.common.exception.*
-import jp.trap.plutus.pteron.openapi.public.models.Error
 import jp.trap.plutus.pteron.config.Environment
 import jp.trap.plutus.pteron.config.StartupHealthCheck
 import jp.trap.plutus.pteron.di.AppModule
@@ -32,6 +32,7 @@ import jp.trap.plutus.pteron.features.transaction.controller.publicApiRoutes
 import jp.trap.plutus.pteron.features.transaction.controller.transactionRoutes
 import jp.trap.plutus.pteron.features.user.controller.userRoutes
 import jp.trap.plutus.pteron.features.user.service.UserService
+import jp.trap.plutus.pteron.openapi.public.models.Error
 import jp.trap.plutus.pteron.utils.trapId
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -123,6 +124,13 @@ fun Application.module() {
                     call.respond(
                         HttpStatusCode.NotFound,
                         Error(cause.message ?: "Not found"),
+                    )
+                }
+
+                is ContentTransformationException -> {
+                    call.respond(
+                        HttpStatusCode.BadRequest,
+                        Error("Invalid request body: ${cause.message}"),
                     )
                 }
 
