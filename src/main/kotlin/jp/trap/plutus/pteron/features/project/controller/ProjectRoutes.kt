@@ -5,7 +5,6 @@ import io.ktor.server.request.*
 import io.ktor.server.resources.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.Route
-import jp.trap.plutus.pteron.common.domain.model.ProjectId
 import jp.trap.plutus.pteron.common.domain.model.UserId
 import jp.trap.plutus.pteron.features.account.domain.model.Account
 import jp.trap.plutus.pteron.features.account.service.AccountService
@@ -68,7 +67,7 @@ fun Route.projectRoutes() {
         val currentUser = userService.getUserByName(call.trapId)
         val updatedProject = projectService.updateProject(project.id, ProjectUrl(request.url), currentUser.id)
         val projectDto = createProjectDto(updatedProject, userService, accountService)
-        call.respond(HttpStatusCode.OK, projectDto)
+        call.respond(HttpStatusCode.Created, projectDto)
     }
 
     // GET /projects/{project_id}/admins
@@ -198,7 +197,8 @@ private suspend fun createProjectDto(
     val adminDtos =
         admins.map { admin ->
             val account =
-                accountMap[admin.accountId] ?: throw IllegalStateException("Admin account not found: ${admin.accountId}")
+                accountMap[admin.accountId]
+                    ?: throw IllegalStateException("Admin account not found: ${admin.accountId}")
             createUserDto(admin, account)
         }
 
