@@ -9,6 +9,7 @@ import jp.trap.plutus.pteron.features.account.service.AccountService
 import jp.trap.plutus.pteron.features.user.domain.model.User
 import jp.trap.plutus.pteron.features.user.service.UserService
 import jp.trap.plutus.pteron.openapi.internal.Paths
+import jp.trap.plutus.pteron.openapi.internal.models.GetUsers200Response
 import jp.trap.plutus.pteron.utils.trapId
 import org.koin.ktor.ext.inject
 import jp.trap.plutus.pteron.openapi.internal.models.User as UserDto
@@ -18,6 +19,7 @@ fun Route.userRoutes() {
     val accountService by inject<AccountService>()
 
     authenticate("ForwardAuth") {
+        // GET /me
         get<Paths.getCurrentUser> {
             val user = userService.getUserByName(call.trapId)
             val account = accountService.getAccountById(user.accountId)
@@ -25,6 +27,22 @@ fun Route.userRoutes() {
             call.respond(createUserDto(user, account))
         }
 
+        // GET /users
+        get<Paths.getUsers> {
+            val users = userService.getAllUsers()
+            val accountIds = users.map { it.accountId }
+            val accounts = accountService.getAccountsByIds(accountIds)
+            val accountMap = accounts.associateBy { it.accountId }
+
+            val userDtos = users.map { user ->
+                val account = accountMap[user.accountId]
+                    ?: throw IllegalStateException("Account not found: ${user.accountId}")
+                createUserDto(user, account)
+            }
+            call.respond(GetUsers200Response(items = userDtos))
+        }
+
+        // GET /users/{userId}
         get<Paths.getUser> {
             val user = userService.getUser(it.userId)
             val account = accountService.getAccountById(user.accountId)

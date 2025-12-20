@@ -62,4 +62,6 @@ class UserService(
             ?: throw NotFoundException("User not found: $id")
 
     suspend fun getUsersByIds(ids: List<UserId>): List<User> = unitOfWork.runInTransaction { userRepository.findByIds(ids) }
+
+    suspend fun getAllUsers(): List<User> = unitOfWork.runInTransaction { userRepository.findAll() }
 }
