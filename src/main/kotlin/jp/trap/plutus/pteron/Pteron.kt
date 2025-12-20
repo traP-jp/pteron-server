@@ -21,6 +21,7 @@ import jp.trap.plutus.api.CornucopiaServiceGrpcKt.CornucopiaServiceCoroutineStub
 import jp.trap.plutus.pteron.auth.bearerAuth
 import jp.trap.plutus.pteron.auth.forwardAuth
 import jp.trap.plutus.pteron.common.exception.*
+import jp.trap.plutus.pteron.openapi.public.models.Error
 import jp.trap.plutus.pteron.config.Environment
 import jp.trap.plutus.pteron.config.StartupHealthCheck
 import jp.trap.plutus.pteron.di.AppModule
