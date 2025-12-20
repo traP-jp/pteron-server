@@ -38,6 +38,14 @@ fun Route.projectRoutes() {
         call.respond(GetProjects200Response(items = projectDtos))
     }
 
+    // GET /users/{userId}/projects
+    get<Paths.getUserProjects> { params ->
+        val user = userService.getUser(params.userId)
+        val projects = projectService.getProjectsByUser(user.id)
+        val projectDtos = createProjectDtos(projects, userService, accountService)
+        call.respond(GetProjects200Response(items = projectDtos))
+    }
+
     // POST /projects
     post<Paths.createProject> {
         val request = call.receive<CreateProjectRequest>()
