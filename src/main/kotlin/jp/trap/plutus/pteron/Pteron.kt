@@ -27,8 +27,6 @@ import jp.trap.plutus.pteron.config.StartupHealthCheck
 import jp.trap.plutus.pteron.di.AppModule
 import jp.trap.plutus.pteron.features.project.controller.projectRoutes
 import jp.trap.plutus.pteron.features.project.service.ProjectService
-import jp.trap.plutus.pteron.features.stats.controller.statsRoutes
-import jp.trap.plutus.pteron.features.stats.service.StatsUpdateJob
 import jp.trap.plutus.pteron.features.transaction.controller.billRoutes
 import jp.trap.plutus.pteron.features.transaction.controller.publicApiRoutes
 import jp.trap.plutus.pteron.features.transaction.controller.transactionRoutes
@@ -74,9 +72,6 @@ fun Application.module() {
             StartupHealthCheck.verifyGrpc(stub)
         }
     }
-
-    val statsUpdateJob by inject<StatsUpdateJob>()
-    statsUpdateJob.start()
 
     val userService by inject<UserService>()
 
@@ -230,7 +225,6 @@ fun Application.module() {
                 projectRoutes()
                 transactionRoutes()
                 billRoutes()
-                statsRoutes()
             }
         }
     }
