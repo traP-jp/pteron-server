@@ -39,6 +39,7 @@ dependencies {
     implementation(libs.ktor.server.auto.head.response)
     implementation(libs.ktor.server.default.headers)
     implementation(libs.ktor.server.hsts)
+    implementation(libs.ktor.server.cors)
     implementation(libs.ktor.server.compression)
     implementation(libs.ktor.server.metrics)
     implementation(libs.ktor.server.websockets)

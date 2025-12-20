@@ -11,6 +11,7 @@ import io.ktor.server.netty.*
 import io.ktor.server.plugins.autohead.*
 import io.ktor.server.plugins.compression.*
 import io.ktor.server.plugins.contentnegotiation.*
+import io.ktor.server.plugins.cors.routing.CORS
 import io.ktor.server.plugins.defaultheaders.*
 import io.ktor.server.plugins.hsts.*
 import io.ktor.server.plugins.statuspages.*
@@ -42,8 +43,8 @@ fun main() {
 
     embeddedServer(
         factory = Netty,
-        port = 8080,
-        host = "0.0.0.0",
+        port = Environment.PORT,
+        host = Environment.HOST,
         module = Application::module,
     ).start(wait = true)
 }
@@ -135,6 +136,16 @@ fun Application.module() {
         preload = false
     }
     install(Resources)
+    install(CORS) {
+        allowHost(Environment.CORS_ALLOWED_HOST, schemes = listOf("http", "https"))
+        allowHeader(HttpHeaders.ContentType)
+        allowHeader(HttpHeaders.Authorization)
+        allowMethod(HttpMethod.Options)
+        allowMethod(HttpMethod.Put)
+        allowMethod(HttpMethod.Delete)
+        allowMethod(HttpMethod.Patch)
+        allowCredentials = true
+    }
 
     install(Authentication) {
         forwardAuth("ForwardAuth") {
@@ -161,12 +172,12 @@ fun Application.module() {
             }
         }
 
-        route("api/v1") {
+        route("v1") {
             // Public API
         }
 
         authenticate("ForwardAuth") {
-            route("api/internal") {
+            route("internal") {
                 // Internal API
                 userRoutes()
                 projectRoutes()
