@@ -101,8 +101,8 @@ class StatsUpdateJob(
         updateSystemStats(term, since, previousSince, now)
         updateUsersStats(term, since, previousSince, now)
         updateProjectsStats(term, since, previousSince, now)
-        updateUserRankings(term, since, previousSince, now)
-        updateProjectRankings(term, since, previousSince, now)
+        updateUserRankings(term, since, now)
+        updateProjectRankings(term, since, now)
     }
 
     private suspend fun updateSystemStats(
@@ -271,7 +271,6 @@ class StatsUpdateJob(
     private suspend fun updateUserRankings(
         term: StatsTerm,
         since: Instant,
-        previousSince: Instant,
         now: Instant,
     ) {
         unitOfWork.runInTransaction {
@@ -286,19 +285,11 @@ class StatsUpdateJob(
                     .findAll(TransactionQueryOptions(limit = null, cursor = null, since = since))
                     .items
 
-            val allPreviousTransactions =
-                transactionRepository
-                    .findAll(TransactionQueryOptions(limit = null, cursor = null, since = previousSince))
-                    .items
-                    .filter { it.createdAt < since }
-
             val currentTransactionsByUser = allCurrentTransactions.groupBy { it.userId }
-            val previousTransactionsByUser = allPreviousTransactions.groupBy { it.userId }
 
             val userStats =
                 users.map { user ->
                     val userCurrentTransactions = currentTransactionsByUser[user.id] ?: emptyList()
-                    val userPreviousTransactions = previousTransactionsByUser[user.id] ?: emptyList()
 
                     val balance = accountMap[user.accountId]?.balance ?: 0L
 
@@ -316,17 +307,6 @@ class StatsUpdateJob(
 
                     val netChange = inAmount - outAmount
                     val balanceAtStart = balance - netChange
-
-                    val previousInAmount =
-                        userPreviousTransactions
-                            .filter { it.type == TransactionType.TRANSFER }
-                            .sumOf { it.amount }
-                    val previousOutAmount =
-                        userPreviousTransactions
-                            .filter { it.type == TransactionType.BILL_PAYMENT }
-                            .sumOf { it.amount }
-                    val previousNetChange = previousInAmount - previousOutAmount
-                    val balanceAtPreviousStart = balanceAtStart - previousNetChange
 
                     val difference = netChange
                     val ratio =
@@ -403,7 +383,6 @@ class StatsUpdateJob(
     private suspend fun updateProjectRankings(
         term: StatsTerm,
         since: Instant,
-        previousSince: Instant,
         now: Instant,
     ) {
         unitOfWork.runInTransaction {
@@ -417,19 +396,11 @@ class StatsUpdateJob(
                     .findAll(TransactionQueryOptions(limit = null, cursor = null, since = since))
                     .items
 
-            val allPreviousTransactions =
-                transactionRepository
-                    .findAll(TransactionQueryOptions(limit = null, cursor = null, since = previousSince))
-                    .items
-                    .filter { it.createdAt < since }
-
             val currentTransactionsByProject = allCurrentTransactions.groupBy { it.projectId }
-            val previousTransactionsByProject = allPreviousTransactions.groupBy { it.projectId }
 
             val projectStats =
                 projects.map { project ->
                     val projectCurrentTransactions = currentTransactionsByProject[project.id] ?: emptyList()
-                    val projectPreviousTransactions = previousTransactionsByProject[project.id] ?: emptyList()
 
                     val balance = accountMap[project.accountId]?.balance ?: 0L
 
@@ -447,16 +418,6 @@ class StatsUpdateJob(
 
                     val netChange = inAmount - outAmount
                     val balanceAtStart = balance - netChange
-
-                    val previousOutAmount =
-                        projectPreviousTransactions
-                            .filter { it.type == TransactionType.TRANSFER }
-                            .sumOf { it.amount }
-                    val previousInAmount =
-                        projectPreviousTransactions
-                            .filter { it.type == TransactionType.BILL_PAYMENT }
-                            .sumOf { it.amount }
-                    val previousNetChange = previousInAmount - previousOutAmount
 
                     val difference = netChange
                     val ratio =
