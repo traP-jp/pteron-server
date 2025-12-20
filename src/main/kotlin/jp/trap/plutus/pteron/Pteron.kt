@@ -11,17 +11,18 @@ import io.ktor.server.netty.*
 import io.ktor.server.plugins.autohead.*
 import io.ktor.server.plugins.compression.*
 import io.ktor.server.plugins.contentnegotiation.*
-import io.ktor.server.plugins.cors.routing.CORS
 import io.ktor.server.plugins.defaultheaders.*
 import io.ktor.server.plugins.hsts.*
 import io.ktor.server.plugins.statuspages.*
 import io.ktor.server.resources.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
+import jp.trap.plutus.api.CornucopiaServiceGrpcKt.CornucopiaServiceCoroutineStub
 import jp.trap.plutus.pteron.auth.bearerAuth
 import jp.trap.plutus.pteron.auth.forwardAuth
 import jp.trap.plutus.pteron.common.exception.*
 import jp.trap.plutus.pteron.config.Environment
+import jp.trap.plutus.pteron.config.StartupHealthCheck
 import jp.trap.plutus.pteron.di.AppModule
 import jp.trap.plutus.pteron.features.project.controller.projectRoutes
 import jp.trap.plutus.pteron.features.project.service.ProjectService
@@ -31,16 +32,14 @@ import jp.trap.plutus.pteron.features.transaction.controller.transactionRoutes
 import jp.trap.plutus.pteron.features.user.controller.userRoutes
 import jp.trap.plutus.pteron.features.user.service.UserService
 import jp.trap.plutus.pteron.utils.trapId
-import jp.trap.plutus.api.CornucopiaServiceGrpcKt.CornucopiaServiceCoroutineStub
-import jp.trap.plutus.pteron.config.StartupHealthCheck
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import org.jetbrains.exposed.v1.jdbc.Database
 import org.koin.ksp.generated.module
 import org.koin.ktor.ext.inject
 import org.koin.ktor.plugin.Koin
 import org.koin.logger.slf4jLogger
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 import java.util.concurrent.TimeUnit
 
 fun main() {
@@ -169,16 +168,6 @@ fun Application.module() {
         preload = false
     }
     install(Resources)
-    install(CORS) {
-        allowHost(Environment.CORS_ALLOWED_HOST, schemes = listOf("http", "https"))
-        allowHeader(HttpHeaders.ContentType)
-        allowHeader(HttpHeaders.Authorization)
-        allowMethod(HttpMethod.Options)
-        allowMethod(HttpMethod.Put)
-        allowMethod(HttpMethod.Delete)
-        allowMethod(HttpMethod.Patch)
-        allowCredentials = true
-    }
 
     val projectService by inject<ProjectService>()
 
@@ -214,14 +203,14 @@ fun Application.module() {
         }
 
         authenticate("BearerAuth") {
-            route("v1") {
+            route("api/v1") {
                 // Public API (外部プロジェクト開発者向け)
                 publicApiRoutes()
             }
         }
 
         authenticate("ForwardAuth") {
-            route("internal") {
+            route("api/internal") {
                 // Internal API (ダッシュボード向け)
                 userRoutes()
                 projectRoutes()
