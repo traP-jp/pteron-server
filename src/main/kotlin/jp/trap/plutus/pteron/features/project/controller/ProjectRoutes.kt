@@ -56,26 +56,24 @@ fun Route.projectRoutes() {
 
     // GET /projects/{project_id}
     get<Paths.getProject> { params ->
-        val projectId = ProjectId(Uuid.parse(params.projectId))
-        val project = projectService.getProjectDetails(projectId)
+        val project = projectService.getProject(params.projectId)
         val projectDto = createProjectDto(project, userService, accountService)
         call.respond(projectDto)
     }
 
     // PUT /projects/{project_id}
     put<Paths.updateProject> { params ->
-        val projectId = ProjectId(Uuid.parse(params.projectId))
+        val project = projectService.getProject(params.projectId)
         val request = call.receive<UpdateProjectRequest>()
         val currentUser = userService.getUserByName(call.trapId)
-        val project = projectService.updateProject(projectId, ProjectUrl(request.url), currentUser.id)
-        val projectDto = createProjectDto(project, userService, accountService)
+        val updatedProject = projectService.updateProject(project.id, ProjectUrl(request.url), currentUser.id)
+        val projectDto = createProjectDto(updatedProject, userService, accountService)
         call.respond(HttpStatusCode.OK, projectDto)
     }
 
     // GET /projects/{project_id}/admins
     get<Paths.getProjectAdmins> { params ->
-        val projectId = ProjectId(Uuid.parse(params.projectId))
-        val project = projectService.getProjectDetails(projectId)
+        val project = projectService.getProject(params.projectId)
         val admins = userService.getUsersByIds(project.adminIds)
         val accounts = accountService.getAccountsByIds(admins.map { it.accountId })
         val accountMap = accounts.associateBy { it.accountId }
@@ -90,48 +88,48 @@ fun Route.projectRoutes() {
 
     // POST /projects/{project_id}/admins
     post<Paths.addProjectAdmin> { params ->
-        val projectId = ProjectId(Uuid.parse(params.projectId))
+        val project = projectService.getProject(params.projectId)
         val request = call.receive<AddProjectAdminRequest>()
         val userId = UserId(Uuid.parse(request.userId))
         val currentUser = userService.getUserByName(call.trapId)
-        projectService.addProjectAdmin(projectId, userId, currentUser.id)
+        projectService.addProjectAdmin(project.id, userId, currentUser.id)
         call.respond(HttpStatusCode.NoContent)
     }
 
     // DELETE /projects/{project_id}/admins
     delete<Paths.removeProjectAdmin> { params ->
-        val projectId = ProjectId(Uuid.parse(params.projectId))
+        val project = projectService.getProject(params.projectId)
         val request = call.receive<AddProjectAdminRequest>()
         val userId = UserId(Uuid.parse(request.userId))
         val currentUser = userService.getUserByName(call.trapId)
-        projectService.deleteProjectAdmin(projectId, userId, currentUser.id)
+        projectService.deleteProjectAdmin(project.id, userId, currentUser.id)
         call.respond(HttpStatusCode.NoContent)
     }
 
     // GET /projects/{project_id}/clients
     get<Paths.getProjectApiClients> { params ->
-        val projectId = ProjectId(Uuid.parse(params.projectId))
+        val project = projectService.getProject(params.projectId)
         val currentUser = userService.getUserByName(call.trapId)
-        val clients = projectService.getProjectApiClients(projectId, currentUser.id)
+        val clients = projectService.getProjectApiClients(project.id, currentUser.id)
         val clientDtos = clients.map { createApiClientDto(it) }
         call.respond(clientDtos)
     }
 
     // POST /projects/{project_id}/clients
     post<Paths.createProjectApiClient> { params ->
-        val projectId = ProjectId(Uuid.parse(params.projectId))
+        val project = projectService.getProject(params.projectId)
         val currentUser = userService.getUserByName(call.trapId)
-        val result = projectService.createApiClient(projectId, currentUser.id)
+        val result = projectService.createApiClient(project.id, currentUser.id)
         val clientDto = createApiClientDto(result.apiClient, plainSecret = result.plainSecret)
         call.respond(HttpStatusCode.Created, clientDto)
     }
 
     // DELETE /projects/{project_id}/clients/{client_id}
     delete<Paths.deleteProjectApiClient> { params ->
-        val projectId = ProjectId(Uuid.parse(params.projectId))
+        val project = projectService.getProject(params.projectId)
         val clientId = Uuid.parse(params.clientId)
         val currentUser = userService.getUserByName(call.trapId)
-        projectService.deleteApiClient(projectId, clientId, currentUser.id)
+        projectService.deleteApiClient(project.id, clientId, currentUser.id)
         call.respond(HttpStatusCode.NoContent)
     }
 }

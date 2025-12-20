@@ -41,18 +41,18 @@ fun Route.transactionRoutes() {
 
     // GET /transactions/users/{user_id}
     get<Paths.getUserTransactions> { params ->
-        val userId = UserId(Uuid.parse(params.userId))
+        val user = userService.getUser(params.userId)
         val options = createQueryOptions(params.term, params.limit, params.cursor)
-        val result = transactionService.getUserTransactions(userId, options)
+        val result = transactionService.getUserTransactions(user.id, options)
         val transactionDtos = createTransactionDtos(result.items, userService, projectService, accountService)
         call.respond(GetTransactions200Response(items = transactionDtos, nextCursor = result.nextCursor))
     }
 
     // GET /transactions/projects/{project_id}
     get<Paths.getProjectTransactions> { params ->
-        val projectId = ProjectId(Uuid.parse(params.projectId))
+        val project = projectService.getProject(params.projectId)
         val options = createQueryOptions(params.term, params.limit, params.cursor)
-        val result = transactionService.getProjectTransactions(projectId, options)
+        val result = transactionService.getProjectTransactions(project.id, options)
         val transactionDtos = createTransactionDtos(result.items, userService, projectService, accountService)
         call.respond(GetTransactions200Response(items = transactionDtos, nextCursor = result.nextCursor))
     }

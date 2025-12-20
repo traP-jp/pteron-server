@@ -31,6 +31,18 @@ class ProjectService(
             projectIds.mapNotNull { projectRepository.findById(it) }
         }
 
+    suspend fun getProject(idOrName: String): Project {
+        val uuid = runCatching { Uuid.parse(idOrName) }.getOrNull()
+        return if (uuid != null) {
+            getProjectDetails(ProjectId(uuid))
+        } else {
+            getProjectByName(ProjectName(idOrName))
+        }
+    }
+
+    suspend fun getProjectByName(name: ProjectName): Project =
+        unitOfWork.runInTransaction { projectRepository.findByName(name) }
+            ?: throw NotFoundException("Project not found: ${name.value}")
 
     suspend fun createProject(
         name: ProjectName,
