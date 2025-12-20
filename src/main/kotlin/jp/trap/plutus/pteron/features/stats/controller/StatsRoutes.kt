@@ -171,7 +171,6 @@ fun Route.statsRoutes() {
     get<Paths.getUserStats> { params ->
         val user = userService.getUser(params.userId)
         val term = StatsTerm.fromString(params.term)
-        val ascending = params.order == "asc"
 
         val stats = statsService.getUserStats(user.id, term)
         val account = accountService.getAccountById(user.accountId)
@@ -182,7 +181,7 @@ fun Route.statsRoutes() {
             rankingType: RankingType,
             entry: UserRankingEntry?,
         ): GetUserRankings200ResponseItemsInner {
-            val rank = statsService.getUserRank(user.id, term, rankingType, ascending) ?: 0L
+            val rank = statsService.getUserRank(user.id, term, rankingType) ?: 0L
             return GetUserRankings200ResponseItemsInner(
                 rank = rank,
                 value = entry?.rankValue ?: 0L,
@@ -208,7 +207,6 @@ fun Route.statsRoutes() {
     get<Paths.getProjectStats> { params ->
         val project = projectService.getProject(params.projectId)
         val term = StatsTerm.fromString(params.term)
-        val ascending = params.order == "asc"
 
         val stats = statsService.getProjectStats(project.id, term)
 
@@ -229,7 +227,7 @@ fun Route.statsRoutes() {
             rankingType: RankingType,
             entry: ProjectRankingEntry?,
         ): GetProjectRankings200ResponseItemsInner {
-            val rank = statsService.getProjectRank(project.id, term, rankingType, ascending) ?: 0L
+            val rank = statsService.getProjectRank(project.id, term, rankingType) ?: 0L
             return GetProjectRankings200ResponseItemsInner(
                 rank = rank,
                 value = entry?.rankValue ?: 0L,
