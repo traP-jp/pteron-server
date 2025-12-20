@@ -33,6 +33,11 @@ class ProjectService(
             projectIds.mapNotNull { projectRepository.findById(it) }
         }
 
+    suspend fun getProjectsByUser(userId: UserId): List<Project> =
+        unitOfWork.runInTransaction {
+            projectRepository.findByUserId(userId)
+        }
+
     suspend fun getProject(idOrName: String): Project {
         val uuid = runCatching { Uuid.parse(idOrName) }.getOrNull()
         return if (uuid != null) {

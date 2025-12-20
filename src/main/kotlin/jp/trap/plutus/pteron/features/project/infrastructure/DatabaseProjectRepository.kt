@@ -16,6 +16,7 @@ import org.jetbrains.exposed.v1.jdbc.deleteWhere
 import org.jetbrains.exposed.v1.jdbc.insert
 import org.jetbrains.exposed.v1.jdbc.selectAll
 import org.jetbrains.exposed.v1.jdbc.upsert
+import org.jetbrains.exposed.v1.sql.or
 import org.koin.core.annotation.Single
 import kotlin.uuid.toJavaUuid
 import kotlin.uuid.toKotlinUuid
@@ -110,6 +111,55 @@ class DatabaseProjectRepository : ProjectRepository {
 
         val projectId = ProjectId(clientRow[ApiClientTable.projectId].toKotlinUuid())
         return findById(projectId)
+    }
+
+    override suspend fun findByUserId(userId: UserId): List<Project> {
+        val ownerProjectIds =
+            ProjectTable
+                .selectAll()
+                .where { ProjectTable.ownerId eq userId.value.toJavaUuid() }
+                .map { it[ProjectTable.id].value }
+
+        val adminProjectIds =
+            ProjectAdminTable
+                .selectAll()
+                .where { ProjectAdminTable.userId eq userId.value.toJavaUuid() }
+                .map { it[ProjectAdminTable.projectId] }
+
+        val targetProjectIds = (ownerProjectIds + adminProjectIds).distinct()
+        if (targetProjectIds.isEmpty()) return emptyList()
+
+        val projectRows =
+            ProjectTable
+                .selectAll()
+                .where { ProjectTable.id inList targetProjectIds }
+                .toList()
+
+        val adminsByProject =
+            ProjectAdminTable
+                .selectAll()
+                .where { ProjectAdminTable.projectId inList targetProjectIds }
+                .groupBy(
+                    { it[ProjectAdminTable.projectId].toKotlinUuid() },
+                    { UserId(it[ProjectAdminTable.userId].toKotlinUuid()) },
+                )
+
+        val clientsByProject =
+            ApiClientTable
+                .selectAll()
+                .where { ApiClientTable.projectId inList targetProjectIds }
+                .groupBy(
+                    { it[ApiClientTable.projectId].toKotlinUuid() },
+                    { it.toApiClient() },
+                )
+
+        return projectRows.map { row ->
+            val id = row[ProjectTable.id].value.toKotlinUuid()
+            row.toProject(
+                adminIds = adminsByProject[id] ?: emptyList(),
+                apiClients = clientsByProject[id] ?: emptyList(),
+            )
+        }
     }
 
     override suspend fun save(project: Project): Project {
