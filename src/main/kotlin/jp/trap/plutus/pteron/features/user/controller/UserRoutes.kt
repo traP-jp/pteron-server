@@ -37,10 +37,9 @@ fun Route.userRoutes() {
 private fun createUserDto(
     user: User,
     account: Account,
-) {
+): UserDto =
     UserDto(
         id = user.id.value,
         name = user.name.value,
         balance = account.balance,
     )
-}

@@ -1,15 +1,17 @@
 package jp.trap.plutus.pteron.features.project.service
 
 import com.github.f4b6a3.uuid.UuidCreator
-import io.ktor.server.plugins.*
 import jp.trap.plutus.pteron.common.domain.model.ProjectId
 import jp.trap.plutus.pteron.common.domain.model.UserId
+import jp.trap.plutus.pteron.common.domain.UnitOfWork
+import jp.trap.plutus.pteron.common.exception.BadRequestException
+import jp.trap.plutus.pteron.common.exception.ForbiddenException
+import jp.trap.plutus.pteron.common.exception.NotFoundException
 import jp.trap.plutus.pteron.features.account.domain.gateway.EconomicGateway
 import jp.trap.plutus.pteron.features.project.domain.ApiClientCreationResult
 import jp.trap.plutus.pteron.features.project.domain.ApiClientCreator
 import jp.trap.plutus.pteron.features.project.domain.model.*
 import jp.trap.plutus.pteron.features.project.domain.repository.ProjectRepository
-import jp.trap.plutus.pteron.features.project.domain.transaction.ProjectTransaction
 import org.koin.core.annotation.Single
 import kotlin.uuid.Uuid
 import kotlin.uuid.toKotlinUuid
@@ -17,10 +19,16 @@ import kotlin.uuid.toKotlinUuid
 @Single
 class ProjectService(
     private val projectRepository: ProjectRepository,
-    private val projectTransaction: ProjectTransaction,
     private val economicGateway: EconomicGateway,
+    private val unitOfWork: UnitOfWork,
 ) {
     suspend fun getProjects(): List<Project> = projectRepository.findAll()
+
+    suspend fun getProjectsByIds(projectIds: List<ProjectId>): List<Project> =
+        unitOfWork.runInTransaction {
+            projectIds.mapNotNull { projectRepository.findById(it) }
+        }
+
 
     suspend fun createProject(
         name: ProjectName,
@@ -29,7 +37,7 @@ class ProjectService(
     ): Project {
         val account = economicGateway.createAccount(canOverdraft = false)
 
-        return projectTransaction.runInTransaction {
+        return unitOfWork.runInTransaction {
             val project =
                 Project(
                     id = ProjectId(UuidCreator.getTimeOrderedEpoch().toKotlinUuid()),
@@ -46,7 +54,7 @@ class ProjectService(
     }
 
     suspend fun getProjectDetails(projectId: ProjectId): Project =
-        projectTransaction.runInTransaction { projectRepository.findById(projectId) }
+        unitOfWork.runInTransaction { projectRepository.findById(projectId) }
             ?: throw NotFoundException("Project $projectId not found")
 
     suspend fun updateProject(
@@ -54,12 +62,12 @@ class ProjectService(
         url: ProjectUrl,
         actorId: UserId,
     ): Project =
-        projectTransaction.runInTransaction {
+        unitOfWork.runInTransaction {
             val project =
                 projectRepository.findById(projectId) ?: throw NotFoundException("Project not found: $projectId")
 
             if (!project.isAdmin(actorId)) {
-                throw ForbiddenOperationException("Only admins can update project settings")
+                throw ForbiddenException("Only admins can update project settings")
             }
 
             val updatedProject = project.updateUrl(url)
@@ -72,12 +80,12 @@ class ProjectService(
         userId: UserId,
         actorId: UserId,
     ) {
-        projectTransaction.runInTransaction {
+        unitOfWork.runInTransaction {
             val project =
                 projectRepository.findById(projectId) ?: throw NotFoundException("Project not found: $projectId")
 
             if (!project.canManageAdmins(actorId)) {
-                throw ForbiddenOperationException("Only the owner can manage admins")
+                throw ForbiddenException("Only the owner can manage admins")
             }
 
             when (val result = project.addAdmin(userId)) {
@@ -86,7 +94,7 @@ class ProjectService(
                 }
 
                 is AdminAdditionResult.Failure.AlreadyExists -> {
-                    throw IllegalArgumentException("User is already an admin")
+                    throw BadRequestException("User is already an admin")
                 }
             }
         }
@@ -97,12 +105,12 @@ class ProjectService(
         userId: UserId,
         actorId: UserId,
     ) {
-        projectTransaction.runInTransaction {
+        unitOfWork.runInTransaction {
             val project =
                 projectRepository.findById(projectId) ?: throw NotFoundException("Project not found: $projectId")
 
             if (!project.canManageAdmins(actorId)) {
-                throw ForbiddenOperationException("Only the owner can manage admins")
+                throw ForbiddenException("Only the owner can manage admins")
             }
 
             when (val result = project.removeAdmin(userId)) {
@@ -111,11 +119,11 @@ class ProjectService(
                 }
 
                 is AdminRemoveResult.Failure.AdminNotFound -> {
-                    throw IllegalArgumentException("User is not an admin")
+                    throw BadRequestException("User is not an admin")
                 }
 
                 is AdminRemoveResult.Failure.CannotRemoveOwner -> {
-                    throw IllegalArgumentException("Owner cannot be removed from admins")
+                    throw BadRequestException("Owner cannot be removed from admins")
                 }
             }
         }
@@ -125,12 +133,12 @@ class ProjectService(
         projectId: ProjectId,
         actorId: UserId,
     ): ApiClientCreationResult =
-        projectTransaction.runInTransaction {
+        unitOfWork.runInTransaction {
             val project =
                 projectRepository.findById(projectId) ?: throw NotFoundException("Project not found: $projectId")
 
             if (!project.canManageApiClients(actorId)) {
-                throw ForbiddenOperationException("Only admins can manage API clients")
+                throw ForbiddenException("Only admins can manage API clients")
             }
 
             val result = ApiClientCreator.createApiClient()
@@ -142,12 +150,12 @@ class ProjectService(
         projectId: ProjectId,
         actorId: UserId,
     ): List<ApiClient> =
-        projectTransaction.runInTransaction {
+        unitOfWork.runInTransaction {
             val project =
                 projectRepository.findById(projectId) ?: throw NotFoundException("Project not found: $projectId")
 
             if (!project.canManageApiClients(actorId)) {
-                throw ForbiddenOperationException("Only admins can view API clients")
+                throw ForbiddenException("Only admins can view API clients")
             }
 
             project.apiClients
@@ -158,24 +166,24 @@ class ProjectService(
         clientId: Uuid,
         actorId: UserId,
     ) {
-        projectTransaction.runInTransaction {
+        unitOfWork.runInTransaction {
             val project =
                 projectRepository.findById(projectId) ?: throw NotFoundException("Project not found: $projectId")
 
             if (!project.canManageApiClients(actorId)) {
-                throw ForbiddenOperationException("Only admins can manage API clients")
+                throw ForbiddenException("Only admins can manage API clients")
             }
 
             val clientToRemove =
                 project.apiClients.find { it.clientId == clientId }
-                    ?: throw IllegalArgumentException("Client not found: $clientId")
+                    ?: throw BadRequestException("Client not found: $clientId")
             when (val result = project.removeApiClient(clientToRemove)) {
                 is ApiClientRemoveResult.Success -> {
                     projectRepository.save(result.project)
                 }
 
                 is ApiClientRemoveResult.Failure.ClientNotFound -> {
-                    throw IllegalArgumentException("Client not found: $clientId")
+                    throw BadRequestException("Client not found: $clientId")
                 }
             }
         }
@@ -185,16 +193,31 @@ class ProjectService(
         projectId: ProjectId,
         actorId: UserId,
     ) {
-        projectTransaction.runInTransaction {
+        unitOfWork.runInTransaction {
             val project =
                 projectRepository.findById(projectId) ?: throw NotFoundException("Project not found: $projectId")
 
             if (!project.canDelete(actorId)) {
-                throw ForbiddenOperationException("Only the owner can delete this project")
+                throw ForbiddenException("Only the owner can delete this project")
             }
 
             projectRepository.delete(projectId)
         }
     }
+
+    suspend fun authenticateApiClient(
+        clientId: Uuid,
+        plainSecret: String,
+    ): Project? =
+        unitOfWork.runInTransaction {
+            val project = projectRepository.findByApiClientId(clientId) ?: return@runInTransaction null
+            val apiClient = project.apiClients.find { it.clientId == clientId } ?: return@runInTransaction null
+
+            if (!apiClient.verifySecret(plainSecret)) {
+                return@runInTransaction null
+            }
+
+            project
+        }
 }
 

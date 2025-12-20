@@ -18,11 +18,16 @@ import io.ktor.server.plugins.statuspages.*
 import io.ktor.server.resources.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
+import jp.trap.plutus.pteron.auth.bearerAuth
 import jp.trap.plutus.pteron.auth.forwardAuth
+import jp.trap.plutus.pteron.common.exception.*
 import jp.trap.plutus.pteron.config.Environment
 import jp.trap.plutus.pteron.di.AppModule
 import jp.trap.plutus.pteron.features.project.controller.projectRoutes
-import jp.trap.plutus.pteron.features.project.service.ForbiddenOperationException
+import jp.trap.plutus.pteron.features.project.service.ProjectService
+import jp.trap.plutus.pteron.features.transaction.controller.billRoutes
+import jp.trap.plutus.pteron.features.transaction.controller.publicApiRoutes
+import jp.trap.plutus.pteron.features.transaction.controller.transactionRoutes
 import jp.trap.plutus.pteron.features.user.controller.userRoutes
 import jp.trap.plutus.pteron.features.user.service.UserService
 import jp.trap.plutus.pteron.utils.trapId
@@ -72,6 +77,41 @@ fun Application.module() {
     install(StatusPages) {
         exception<Throwable> { call, cause ->
             when (cause) {
+                is BadRequestException -> {
+                    call.respond(
+                        HttpStatusCode.BadRequest,
+                        Error(cause.message ?: "Bad request"),
+                    )
+                }
+
+                is UnauthorizedException -> {
+                    call.respond(
+                        HttpStatusCode.Unauthorized,
+                        Error(cause.message ?: "Unauthorized"),
+                    )
+                }
+
+                is ForbiddenException -> {
+                    call.respond(
+                        HttpStatusCode.Forbidden,
+                        Error(cause.message ?: "Forbidden"),
+                    )
+                }
+
+                is NotFoundException -> {
+                    call.respond(
+                        HttpStatusCode.NotFound,
+                        Error(cause.message ?: "Not found"),
+                    )
+                }
+
+                is ConflictException -> {
+                    call.respond(
+                        HttpStatusCode.Conflict,
+                        Error(cause.message ?: "Conflict"),
+                    )
+                }
+
                 is IllegalArgumentException -> {
                     call.respond(
                         HttpStatusCode.BadRequest,
@@ -83,13 +123,6 @@ fun Application.module() {
                     call.respond(
                         HttpStatusCode.NotFound,
                         Error(cause.message ?: "Not found"),
-                    )
-                }
-
-                is ForbiddenOperationException -> {
-                    call.respond(
-                        HttpStatusCode.Forbidden,
-                        Error(cause.message ?: "Forbidden"),
                     )
                 }
 
@@ -147,6 +180,8 @@ fun Application.module() {
         allowCredentials = true
     }
 
+    val projectService by inject<ProjectService>()
+
     install(Authentication) {
         forwardAuth("ForwardAuth") {
             verify { context ->
@@ -163,6 +198,12 @@ fun Application.module() {
                 }
             }
         }
+
+        bearerAuth("BearerAuth") {
+            validate { clientId, clientSecret ->
+                projectService.authenticateApiClient(clientId, clientSecret)
+            }
+        }
     }
 
     routing {
@@ -172,15 +213,20 @@ fun Application.module() {
             }
         }
 
-        route("v1") {
-            // Public API
+        authenticate("BearerAuth") {
+            route("v1") {
+                // Public API (外部プロジェクト開発者向け)
+                publicApiRoutes()
+            }
         }
 
         authenticate("ForwardAuth") {
             route("internal") {
-                // Internal API
+                // Internal API (ダッシュボード向け)
                 userRoutes()
                 projectRoutes()
+                transactionRoutes()
+                billRoutes()
             }
         }
     }

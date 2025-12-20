@@ -15,6 +15,8 @@ object Environment {
 
     val CORS_ALLOWED_HOST: String by envString("CORS_ALLOWED_HOST", required = true)
 
+    val PUBLIC_URL: String by envString("PUBLIC_URL", default = "http://localhost:8080")
+
     fun validate() {
         val missingVars = mutableListOf<String>()
 

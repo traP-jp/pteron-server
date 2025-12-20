@@ -101,6 +101,17 @@ class DatabaseProjectRepository : ProjectRepository {
         }
     }
 
+    override suspend fun findByApiClientId(clientId: kotlin.uuid.Uuid): Project? {
+        val clientRow =
+            ApiClientTable
+                .selectAll()
+                .where { ApiClientTable.id eq clientId.toJavaUuid() }
+                .singleOrNull() ?: return null
+
+        val projectId = ProjectId(clientRow[ApiClientTable.projectId].toKotlinUuid())
+        return findById(projectId)
+    }
+
     override suspend fun save(project: Project): Project {
         ProjectTable.upsert {
             it[id] = project.id.value.toJavaUuid()
