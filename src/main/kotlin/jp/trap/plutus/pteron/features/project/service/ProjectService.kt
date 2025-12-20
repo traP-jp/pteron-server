@@ -5,6 +5,7 @@ import jp.trap.plutus.pteron.common.domain.UnitOfWork
 import jp.trap.plutus.pteron.common.domain.model.ProjectId
 import jp.trap.plutus.pteron.common.domain.model.UserId
 import jp.trap.plutus.pteron.common.exception.BadRequestException
+import jp.trap.plutus.pteron.common.exception.ConflictException
 import jp.trap.plutus.pteron.common.exception.ForbiddenException
 import jp.trap.plutus.pteron.common.exception.NotFoundException
 import jp.trap.plutus.pteron.features.account.domain.gateway.EconomicGateway
@@ -49,6 +50,12 @@ class ProjectService(
         ownerId: UserId,
         url: ProjectUrl? = null,
     ): Project {
+        unitOfWork.runInTransaction {
+            projectRepository.findByName(name)?.let {
+                throw ConflictException("Project with name '${name.value}' already exists")
+            }
+        }
+
         val account = economicGateway.createAccount(canOverdraft = false)
 
         return unitOfWork.runInTransaction {
