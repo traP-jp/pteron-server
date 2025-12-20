@@ -1,9 +1,11 @@
 package jp.trap.plutus.pteron.features.transaction.service
 
 import com.github.f4b6a3.uuid.UuidCreator
+import io.grpc.Status
+import io.grpc.StatusException
+import jp.trap.plutus.pteron.common.domain.UnitOfWork
 import jp.trap.plutus.pteron.common.domain.model.ProjectId
 import jp.trap.plutus.pteron.common.domain.model.UserId
-import jp.trap.plutus.pteron.common.domain.UnitOfWork
 import jp.trap.plutus.pteron.common.exception.BadRequestException
 import jp.trap.plutus.pteron.common.exception.ConflictException
 import jp.trap.plutus.pteron.common.exception.NotFoundException
@@ -15,8 +17,6 @@ import jp.trap.plutus.pteron.features.transaction.domain.repository.BillQueryRes
 import jp.trap.plutus.pteron.features.transaction.domain.repository.BillRepository
 import jp.trap.plutus.pteron.features.transaction.domain.repository.TransactionRepository
 import jp.trap.plutus.pteron.features.user.domain.repository.UserRepository
-import io.grpc.Status
-import io.grpc.StatusException
 import org.koin.core.annotation.Single
 import kotlin.time.Clock
 import kotlin.uuid.toKotlinUuid
@@ -126,12 +126,17 @@ class BillService(
         // 承認処理（PENDING → PROCESSING）
         val processingBill =
             when (val result = bill.approve()) {
-                is BillApprovalResult.Success -> result.bill
-                is BillApprovalResult.Failure.AlreadyProcessed ->
-                    throw ConflictException("Bill has already been processed: $billId")
+                is BillApprovalResult.Success -> {
+                    result.bill
+                }
 
-                is BillApprovalResult.Failure.InsufficientBalance ->
+                is BillApprovalResult.Failure.AlreadyProcessed -> {
+                    throw ConflictException("Bill has already been processed: $billId")
+                }
+
+                is BillApprovalResult.Failure.InsufficientBalance -> {
                     throw BadRequestException("Insufficient balance for user: $actorUserId")
+                }
             }
 
         // 処理中状態を保存
@@ -157,6 +162,7 @@ class BillService(
                 is BillMarkAsFailedResult.Success -> {
                     unitOfWork.runInTransaction { billRepository.save(failResult.bill) }
                 }
+
                 is BillMarkAsFailedResult.Failure.NotProcessing -> {
                 }
             }
@@ -170,6 +176,7 @@ class BillService(
                 is BillMarkAsFailedResult.Success -> {
                     unitOfWork.runInTransaction { billRepository.save(failResult.bill) }
                 }
+
                 is BillMarkAsFailedResult.Failure.NotProcessing -> {
                 }
             }
@@ -179,9 +186,13 @@ class BillService(
         // 完了状態に変更
         val completedBill =
             when (val result = processingBill.complete()) {
-                is BillCompleteResult.Success -> result.bill
-                is BillCompleteResult.Failure.NotProcessing ->
+                is BillCompleteResult.Success -> {
+                    result.bill
+                }
+
+                is BillCompleteResult.Failure.NotProcessing -> {
                     throw ConflictException("Bill state changed unexpectedly: $billId")
+                }
             }
 
         // 取引レコードを作成
@@ -228,8 +239,9 @@ class BillService(
                 result.bill
             }
 
-            is BillDeclineResult.Failure.AlreadyProcessed ->
+            is BillDeclineResult.Failure.AlreadyProcessed -> {
                 throw ConflictException("Bill has already been processed: $billId")
+            }
         }
     }
 
@@ -259,8 +271,9 @@ class BillService(
                 result.bill
             }
 
-            is BillDeclineResult.Failure.AlreadyProcessed ->
+            is BillDeclineResult.Failure.AlreadyProcessed -> {
                 throw ConflictException("Bill has already been processed: $billId")
+            }
         }
     }
 }

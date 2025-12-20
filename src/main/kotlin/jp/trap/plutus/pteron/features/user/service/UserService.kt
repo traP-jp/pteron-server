@@ -1,8 +1,8 @@
 package jp.trap.plutus.pteron.features.user.service
 
 import com.github.f4b6a3.uuid.UuidCreator
-import jp.trap.plutus.pteron.common.domain.model.UserId
 import jp.trap.plutus.pteron.common.domain.UnitOfWork
+import jp.trap.plutus.pteron.common.domain.model.UserId
 import jp.trap.plutus.pteron.common.exception.NotFoundException
 import jp.trap.plutus.pteron.features.account.domain.gateway.EconomicGateway
 import jp.trap.plutus.pteron.features.user.domain.model.User

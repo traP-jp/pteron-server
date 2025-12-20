@@ -23,9 +23,10 @@ class ProjectService(
     private val economicGateway: EconomicGateway,
     private val unitOfWork: UnitOfWork,
 ) {
-    suspend fun getProjects(): List<Project> = unitOfWork.runInTransaction {
-        projectRepository.findAll()
-    }
+    suspend fun getProjects(): List<Project> =
+        unitOfWork.runInTransaction {
+            projectRepository.findAll()
+        }
 
     suspend fun getProjectsByIds(projectIds: List<ProjectId>): List<Project> =
         unitOfWork.runInTransaction {
@@ -241,4 +242,3 @@ class ProjectService(
             project
         }
 }
-

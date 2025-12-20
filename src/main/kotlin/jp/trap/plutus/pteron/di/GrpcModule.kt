@@ -1,13 +1,6 @@
 package jp.trap.plutus.pteron.di
 
-import io.grpc.CallOptions
-import io.grpc.Channel
-import io.grpc.ClientCall
-import io.grpc.ClientInterceptor
-import io.grpc.ForwardingClientCall
-import io.grpc.ManagedChannelBuilder
-import io.grpc.Metadata
-import io.grpc.MethodDescriptor
+import io.grpc.*
 import jp.trap.plutus.api.CornucopiaServiceGrpcKt.CornucopiaServiceCoroutineStub
 import jp.trap.plutus.pteron.config.Environment
 import org.koin.core.annotation.Module

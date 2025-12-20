@@ -113,5 +113,6 @@ val io.ktor.server.application.ApplicationCall.projectPrincipal: ProjectPrincipa
  * 認証済みProjectIdを取得する拡張関数
  */
 val io.ktor.server.application.ApplicationCall.projectId: ProjectId
-    get() = projectPrincipal?.project?.id
-        ?: throw IllegalStateException("Project principal not found. Ensure this route is authenticated with BearerAuth.")
+    get() =
+        projectPrincipal?.project?.id
+            ?: throw IllegalStateException("Project principal not found. Ensure this route is authenticated with BearerAuth.")

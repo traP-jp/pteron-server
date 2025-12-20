@@ -24,7 +24,10 @@ object PaginationCursor {
     /**
      * createdAt と id からカーソルトークンを生成
      */
-    fun encode(createdAt: Instant, id: Uuid): String {
+    fun encode(
+        createdAt: Instant,
+        id: Uuid,
+    ): String {
         val buffer = ByteBuffer.allocate(CURSOR_SIZE)
         buffer.putLong(createdAt.toEpochMilliseconds())
         val javaUuid = id.toJavaUuid()

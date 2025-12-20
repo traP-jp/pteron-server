@@ -40,8 +40,9 @@ fun Route.publicApiRoutes() {
 
     // GET /me - 自プロジェクト情報取得
     get<PublicPaths.getMe> {
-        val project = call.projectPrincipal?.project
-            ?: return@get call.respond(HttpStatusCode.Unauthorized)
+        val project =
+            call.projectPrincipal?.project
+                ?: return@get call.respond(HttpStatusCode.Unauthorized)
 
         val account = accountService.getAccountById(project.accountId)
 
@@ -56,13 +57,15 @@ fun Route.publicApiRoutes() {
 
     // GET /me/transactions - 自プロジェクトの取引履歴
     get<PublicPaths.getMyTransactions> { params ->
-        val project = call.projectPrincipal?.project
-            ?: return@get call.respond(HttpStatusCode.Unauthorized)
+        val project =
+            call.projectPrincipal?.project
+                ?: return@get call.respond(HttpStatusCode.Unauthorized)
 
-        val options = TransactionQueryOptions(
-            limit = params.limit ?: 20,
-            cursor = params.cursor,
-        )
+        val options =
+            TransactionQueryOptions(
+                limit = params.limit ?: 20,
+                cursor = params.cursor,
+            )
         val result = transactionService.getProjectTransactions(project.id, options)
         val transactionDtos = result.items.map { createPublicTransactionDto(it, userService) }
 
@@ -71,15 +74,17 @@ fun Route.publicApiRoutes() {
 
     // GET /me/bills - 自プロジェクトの請求一覧
     get<PublicPaths.getMyBills> { params ->
-        val project = call.projectPrincipal?.project
-            ?: return@get call.respond(HttpStatusCode.Unauthorized)
+        val project =
+            call.projectPrincipal?.project
+                ?: return@get call.respond(HttpStatusCode.Unauthorized)
 
         val status = params.status?.let { BillStatus.valueOf(it) }
-        val options = BillQueryOptions(
-            limit = params.limit ?: 20,
-            cursor = params.cursor,
-            status = status,
-        )
+        val options =
+            BillQueryOptions(
+                limit = params.limit ?: 20,
+                cursor = params.cursor,
+                status = status,
+            )
         val result = billService.getProjectBills(project.id, options)
         val billDtos = result.items.map { createPublicBillDto(it, userService) }
 
@@ -88,44 +93,50 @@ fun Route.publicApiRoutes() {
 
     // POST /transactions - ユーザーへ送金
     post<PublicPaths.createTransaction> {
-        val project = call.projectPrincipal?.project
-            ?: return@post call.respond(HttpStatusCode.Unauthorized)
+        val project =
+            call.projectPrincipal?.project
+                ?: return@post call.respond(HttpStatusCode.Unauthorized)
 
         val request = call.receive<CreateTransactionRequest>()
 
         // traP ID (ユーザー名) からUserを検索
-        val targetUser = userService.getUserByName(
-            Username(request.toUser),
-        )
+        val targetUser =
+            userService.getUserByName(
+                Username(request.toUser),
+            )
 
-        val transaction = transactionService.transfer(
-            projectId = project.id,
-            toUserId = targetUser.id,
-            amount = request.amount,
-            description = request.description,
-        )
+        val transaction =
+            transactionService.transfer(
+                projectId = project.id,
+                toUserId = targetUser.id,
+                amount = request.amount,
+                description = request.description,
+            )
 
         call.respond(createPublicTransactionDto(transaction, userService))
     }
 
     // POST /bills - 請求作成
     post<PublicPaths.createBill> {
-        val project = call.projectPrincipal?.project
-            ?: return@post call.respond(HttpStatusCode.Unauthorized)
+        val project =
+            call.projectPrincipal?.project
+                ?: return@post call.respond(HttpStatusCode.Unauthorized)
 
         val request = call.receive<CreateBillRequest>()
 
         // traP ID (ユーザー名) からUserを検索
-        val targetUser = userService.getUserByName(
-            Username(request.targetUser),
-        )
+        val targetUser =
+            userService.getUserByName(
+                Username(request.targetUser),
+            )
 
-        val bill = billService.createBill(
-            projectId = project.id,
-            targetUserId = targetUser.id,
-            amount = request.amount,
-            description = request.description,
-        )
+        val bill =
+            billService.createBill(
+                projectId = project.id,
+                targetUserId = targetUser.id,
+                amount = request.amount,
+                description = request.description,
+            )
 
         // 決済確認ページのURLを生成
         val paymentUrl = "${Environment.PUBLIC_URL}/checkout?id=${bill.id.value}"
@@ -143,8 +154,9 @@ fun Route.publicApiRoutes() {
 
     // GET /bills/{bill_id} - 請求ステータス確認
     get<PublicPaths.getBill> { params ->
-        val project = call.projectPrincipal?.project
-            ?: return@get call.respond(HttpStatusCode.Unauthorized)
+        val project =
+            call.projectPrincipal?.project
+                ?: return@get call.respond(HttpStatusCode.Unauthorized)
 
         val billId = BillId(params.billId)
         val bill = billService.getBill(billId)
@@ -160,8 +172,9 @@ fun Route.publicApiRoutes() {
 
     // POST /bills/{bill_id}/cancel - 請求キャンセル
     post<PublicPaths.cancelBill> { params ->
-        val project = call.projectPrincipal?.project
-            ?: return@post call.respond(HttpStatusCode.Unauthorized)
+        val project =
+            call.projectPrincipal?.project
+                ?: return@post call.respond(HttpStatusCode.Unauthorized)
 
         val billId = BillId(params.billId)
         billService.cancelBill(billId, project.id)

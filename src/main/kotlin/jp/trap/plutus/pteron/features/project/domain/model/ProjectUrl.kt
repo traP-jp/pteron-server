@@ -14,8 +14,8 @@ value class ProjectUrl(
     companion object {
         private val ALLOWED_SCHEMES = setOf("http", "https")
 
-        private fun isValidUrl(url: String): Boolean {
-            return try {
+        private fun isValidUrl(url: String): Boolean =
+            try {
                 val uri = URI(url)
                 uri.scheme?.lowercase() in ALLOWED_SCHEMES &&
                     uri.host != null &&
@@ -23,7 +23,6 @@ value class ProjectUrl(
             } catch (_: Exception) {
                 false
             }
-        }
     }
 
     override fun toString(): String = value

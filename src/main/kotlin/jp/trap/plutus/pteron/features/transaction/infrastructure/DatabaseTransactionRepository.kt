@@ -25,20 +25,17 @@ class DatabaseTransactionRepository : TransactionRepository {
             .map { it.toTransaction() }
             .singleOrNull()
 
-    override suspend fun findAll(options: TransactionQueryOptions): TransactionQueryResult =
-        executeQuery(options, null)
+    override suspend fun findAll(options: TransactionQueryOptions): TransactionQueryResult = executeQuery(options, null)
 
     override suspend fun findByUserId(
         userId: UserId,
         options: TransactionQueryOptions,
-    ): TransactionQueryResult =
-        executeQuery(options, TransactionTable.userId eq userId.value.toJavaUuid())
+    ): TransactionQueryResult = executeQuery(options, TransactionTable.userId eq userId.value.toJavaUuid())
 
     override suspend fun findByProjectId(
         projectId: ProjectId,
         options: TransactionQueryOptions,
-    ): TransactionQueryResult =
-        executeQuery(options, TransactionTable.projectId eq projectId.value.toJavaUuid())
+    ): TransactionQueryResult = executeQuery(options, TransactionTable.projectId eq projectId.value.toJavaUuid())
 
     override suspend fun save(transaction: Transaction): Transaction {
         TransactionTable.insert {
@@ -75,8 +72,10 @@ class DatabaseTransactionRepository : TransactionRepository {
                         // カーソルより「前」のレコードを取得
                         conditions.add(
                             (TransactionTable.createdAt less cursorCreatedAtKt) or
-                                ((TransactionTable.createdAt eq cursorCreatedAtKt) and
-                                    (TransactionTable.id less cursorIdJava))
+                                (
+                                    (TransactionTable.createdAt eq cursorCreatedAtKt) and
+                                        (TransactionTable.id less cursorIdJava)
+                                ),
                         )
                     }
                     since?.let { conditions.add(TransactionTable.createdAt greater it) }
@@ -84,17 +83,19 @@ class DatabaseTransactionRepository : TransactionRepository {
                     if (conditions.isNotEmpty()) {
                         where { conditions.reduce { acc, op -> acc and op } }
                     }
-                }
-                .orderBy(TransactionTable.createdAt, SortOrder.DESC)
+                }.orderBy(TransactionTable.createdAt, SortOrder.DESC)
                 .orderBy(TransactionTable.id, SortOrder.DESC)
                 .limit(limit + 1)
 
         val results = query.map { it.toTransaction() }
         val hasNext = results.size > limit
         val items = if (hasNext) results.dropLast(1) else results
-        val nextCursor = if (hasNext) {
-            items.lastOrNull()?.let { PaginationCursor.encode(it.createdAt, it.id.value) }
-        } else null
+        val nextCursor =
+            if (hasNext) {
+                items.lastOrNull()?.let { PaginationCursor.encode(it.createdAt, it.id.value) }
+            } else {
+                null
+            }
 
         return TransactionQueryResult(items, nextCursor)
     }
@@ -110,4 +111,3 @@ class DatabaseTransactionRepository : TransactionRepository {
             createdAt = this[TransactionTable.createdAt],
         )
 }
-

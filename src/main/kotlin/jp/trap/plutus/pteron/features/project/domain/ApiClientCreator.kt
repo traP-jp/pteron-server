@@ -4,7 +4,7 @@ import com.github.f4b6a3.uuid.UuidCreator
 import jp.trap.plutus.pteron.features.project.domain.model.ApiClient
 import org.mindrot.jbcrypt.BCrypt
 import java.security.SecureRandom
-import java.util.Base64
+import java.util.*
 import kotlin.time.Clock
 import kotlin.uuid.toKotlinUuid
 
@@ -22,11 +22,12 @@ object ApiClientCreator {
         val plainSecret = generateSecret()
         val hashedSecret = BCrypt.hashpw(plainSecret, BCrypt.gensalt(BCRYPT_LOG_ROUNDS))
 
-        val apiClient = ApiClient(
-            clientId = UuidCreator.getTimeOrderedEpoch().toKotlinUuid(),
-            clientSecretHashed = hashedSecret,
-            createdAt = Clock.System.now(),
-        )
+        val apiClient =
+            ApiClient(
+                clientId = UuidCreator.getTimeOrderedEpoch().toKotlinUuid(),
+                clientSecretHashed = hashedSecret,
+                createdAt = Clock.System.now(),
+            )
 
         return ApiClientCreationResult(
             plainSecret = plainSecret,
@@ -40,4 +41,3 @@ object ApiClientCreator {
         return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes)
     }
 }
-

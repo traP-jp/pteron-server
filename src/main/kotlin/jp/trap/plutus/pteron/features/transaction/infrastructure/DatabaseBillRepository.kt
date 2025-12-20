@@ -28,14 +28,12 @@ class DatabaseBillRepository : BillRepository {
     override suspend fun findByUserId(
         userId: UserId,
         options: BillQueryOptions,
-    ): BillQueryResult =
-        executeQuery(options, BillTable.userId eq userId.value.toJavaUuid())
+    ): BillQueryResult = executeQuery(options, BillTable.userId eq userId.value.toJavaUuid())
 
     override suspend fun findByProjectId(
         projectId: ProjectId,
         options: BillQueryOptions,
-    ): BillQueryResult =
-        executeQuery(options, BillTable.projectId eq projectId.value.toJavaUuid())
+    ): BillQueryResult = executeQuery(options, BillTable.projectId eq projectId.value.toJavaUuid())
 
     override suspend fun save(bill: Bill): Bill {
         BillTable.upsert {
@@ -71,24 +69,28 @@ class DatabaseBillRepository : BillRepository {
                         // カーソルより「前」のレコードを取得
                         conditions.add(
                             (BillTable.createdAt less cursorCreatedAtKt) or
-                                ((BillTable.createdAt eq cursorCreatedAtKt) and
-                                    (BillTable.id less cursorIdJava))
+                                (
+                                    (BillTable.createdAt eq cursorCreatedAtKt) and
+                                        (BillTable.id less cursorIdJava)
+                                ),
                         )
                     }
                     statusFilter?.let { conditions.add(BillTable.status eq it.name) }
 
                     where { conditions.reduce { acc, op -> acc and op } }
-                }
-                .orderBy(BillTable.createdAt, SortOrder.DESC)
+                }.orderBy(BillTable.createdAt, SortOrder.DESC)
                 .orderBy(BillTable.id, SortOrder.DESC)
                 .limit(limit + 1)
 
         val results = query.map { it.toBill() }
         val hasNext = results.size > limit
         val items = if (hasNext) results.dropLast(1) else results
-        val nextCursor = if (hasNext) {
-            items.lastOrNull()?.let { PaginationCursor.encode(it.createdAt, it.id.value) }
-        } else null
+        val nextCursor =
+            if (hasNext) {
+                items.lastOrNull()?.let { PaginationCursor.encode(it.createdAt, it.id.value) }
+            } else {
+                null
+            }
 
         return BillQueryResult(items, nextCursor)
     }
@@ -104,4 +106,3 @@ class DatabaseBillRepository : BillRepository {
             createdAt = this[BillTable.createdAt],
         )
 }
-

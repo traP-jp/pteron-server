@@ -84,39 +84,46 @@ private suspend fun createBillDto(
     val adminAccounts = accountService.getAccountsByIds(adminAccountIds)
     val adminAccountMap = adminAccounts.associateBy { it.accountId }
 
-    val ownerUser = adminUsers.find { it.id == project.ownerId }
-        ?: throw IllegalStateException("Owner not found")
-    val ownerAccount = adminAccountMap[ownerUser.accountId]
-        ?: throw IllegalStateException("Owner account not found")
+    val ownerUser =
+        adminUsers.find { it.id == project.ownerId }
+            ?: throw IllegalStateException("Owner not found")
+    val ownerAccount =
+        adminAccountMap[ownerUser.accountId]
+            ?: throw IllegalStateException("Owner account not found")
 
-    val adminDtos = adminUsers.map { admin ->
-        val adminAccount = adminAccountMap[admin.accountId]
-            ?: throw IllegalStateException("Admin account not found")
-        UserDto(
-            id = admin.id.value,
-            name = admin.name.value,
-            balance = adminAccount.balance,
+    val adminDtos =
+        adminUsers.map { admin ->
+            val adminAccount =
+                adminAccountMap[admin.accountId]
+                    ?: throw IllegalStateException("Admin account not found")
+            UserDto(
+                id = admin.id.value,
+                name = admin.name.value,
+                balance = adminAccount.balance,
+            )
+        }
+
+    val projectDto =
+        ProjectDto(
+            id = project.id.value,
+            name = project.name.value,
+            owner =
+                UserDto(
+                    id = ownerUser.id.value,
+                    name = ownerUser.name.value,
+                    balance = ownerAccount.balance,
+                ),
+            admins = adminDtos,
+            balance = projectAccount.balance,
+            url = project.url?.value,
         )
-    }
 
-    val projectDto = ProjectDto(
-        id = project.id.value,
-        name = project.name.value,
-        owner = UserDto(
-            id = ownerUser.id.value,
-            name = ownerUser.name.value,
-            balance = ownerAccount.balance,
-        ),
-        admins = adminDtos,
-        balance = projectAccount.balance,
-        url = project.url?.value,
-    )
-
-    val userDto = UserDto(
-        id = user.id.value,
-        name = user.name.value,
-        balance = userAccount.balance,
-    )
+    val userDto =
+        UserDto(
+            id = user.id.value,
+            name = user.name.value,
+            balance = userAccount.balance,
+        )
 
     return BillDto(
         id = bill.id.value,

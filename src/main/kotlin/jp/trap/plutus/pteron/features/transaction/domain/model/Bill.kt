@@ -187,4 +187,3 @@ class Bill(
 
     override fun hashCode(): Int = id.hashCode()
 }
-
