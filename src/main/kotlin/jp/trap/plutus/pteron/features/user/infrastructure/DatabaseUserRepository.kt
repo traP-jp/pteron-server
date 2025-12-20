@@ -16,6 +16,11 @@ import kotlin.uuid.toKotlinUuid
 
 @Single(binds = [UserRepository::class])
 class DatabaseUserRepository : UserRepository {
+    override suspend fun findAll(): List<User> =
+        UserTable
+            .selectAll()
+            .map { it.toUser() }
+
     override suspend fun findById(id: UserId): User? =
         UserTable
             .selectAll()

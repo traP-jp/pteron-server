@@ -5,6 +5,8 @@ import jp.trap.plutus.pteron.features.user.domain.model.User
 import jp.trap.plutus.pteron.features.user.domain.model.Username
 
 interface UserRepository {
+    suspend fun findAll(): List<User>
+
     suspend fun findById(id: UserId): User?
 
     suspend fun findByIds(ids: List<UserId>): List<User>
