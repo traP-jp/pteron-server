@@ -99,6 +99,13 @@ fun Route.publicApiRoutes() {
 
         val request = call.receive<CreateTransactionRequest>()
 
+        if (request.amount <= 0) {
+            return@post call.respond(
+                HttpStatusCode.BadRequest,
+                "Amount must be greater than zero",
+            )
+        }
+
         // traP ID (ユーザー名) からUserを検索
         val targetUser =
             userService.getUserByName(
