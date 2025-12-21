@@ -16,32 +16,78 @@ import kotlin.uuid.toKotlinUuid
 
 @Single(binds = [UserRepository::class])
 class DatabaseUserRepository : UserRepository {
-    override suspend fun findAll(): List<User> =
-        UserTable
+    private val idCache = java.util.concurrent.ConcurrentHashMap<UserId, User>()
+    private val usernameCache = java.util.concurrent.ConcurrentHashMap<Username, User>()
+
+    @Volatile
+    private var allUsersCache: List<User>? = null
+
+    override suspend fun findAll(): List<User> {
+        val cached = allUsersCache
+        if (cached != null) return cached
+
+        return UserTable
             .selectAll()
             .map { it.toUser() }
+            .also { users ->
+                users.forEach { user ->
+                    idCache[user.id] = user
+                    usernameCache[user.name] = user
+                }
+                allUsersCache = users
+            }
+    }
 
-    override suspend fun findById(id: UserId): User? =
-        UserTable
+    override suspend fun findById(id: UserId): User? {
+        idCache[id]?.let { return it }
+
+        return UserTable
             .selectAll()
             .where { UserTable.id eq id.value.toJavaUuid() }
             .map { it.toUser() }
             .singleOrNull()
+            ?.also { user ->
+                idCache[user.id] = user
+                usernameCache[user.name] = user
+            }
+    }
 
     override suspend fun findByIds(ids: List<UserId>): List<User> {
         if (ids.isEmpty()) return emptyList()
-        return UserTable
-            .selectAll()
-            .where { UserTable.id inList ids.map { it.value.toJavaUuid() } }
-            .map { it.toUser() }
+
+        val cachedUsers = ids.mapNotNull { idCache[it] }
+        val missingIds = ids.filter { !idCache.containsKey(it) }
+
+        if (missingIds.isEmpty()) {
+            return cachedUsers
+        }
+
+        val dbUsers =
+            UserTable
+                .selectAll()
+                .where { UserTable.id inList missingIds.map { it.value.toJavaUuid() } }
+                .map { it.toUser() }
+                .onEach { user ->
+                    idCache[user.id] = user
+                    usernameCache[user.name] = user
+                }
+
+        return cachedUsers + dbUsers
     }
 
-    override suspend fun findByUsername(username: Username): User? =
-        UserTable
+    override suspend fun findByUsername(username: Username): User? {
+        usernameCache[username]?.let { return it }
+
+        return UserTable
             .selectAll()
             .where { UserTable.name eq username.value }
             .map { it.toUser() }
             .singleOrNull()
+            ?.also { user ->
+                idCache[user.id] = user
+                usernameCache[user.name] = user
+            }
+    }
 
     override suspend fun save(user: User) {
         UserTable.upsert {
@@ -49,6 +95,9 @@ class DatabaseUserRepository : UserRepository {
             it[name] = user.name.value
             it[accountId] = user.accountId.value.toJavaUuid()
         }
+        idCache[user.id] = user
+        usernameCache[user.name] = user
+        allUsersCache = null
     }
 
     private fun ResultRow.toUser(): User =
