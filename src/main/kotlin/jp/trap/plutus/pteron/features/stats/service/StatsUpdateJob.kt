@@ -40,7 +40,7 @@ class StatsUpdateJob(
                 } catch (e: Exception) {
                     logger.error("Failed to update stats cache", e)
                 }
-                delay(5.minutes)
+                delay(1.minutes)
             }
         }
     }
