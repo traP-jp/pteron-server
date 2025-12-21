@@ -43,6 +43,8 @@ class DatabaseBillRepository : BillRepository {
             it[projectId] = bill.projectId.value.toJavaUuid()
             it[description] = bill.description
             it[status] = bill.status.name
+            it[successUrl] = bill.successUrl
+            it[cancelUrl] = bill.cancelUrl
             it[createdAt] = bill.createdAt
         }
         return bill
@@ -72,7 +74,7 @@ class DatabaseBillRepository : BillRepository {
                                 (
                                     (BillTable.createdAt eq cursorCreatedAtKt) and
                                         (BillTable.id less cursorIdJava)
-                                ),
+                                    ),
                         )
                     }
                     statusFilter?.let { conditions.add(BillTable.status eq it.name) }
@@ -103,6 +105,8 @@ class DatabaseBillRepository : BillRepository {
             projectId = ProjectId(this[BillTable.projectId].toKotlinUuid()),
             description = this[BillTable.description],
             status = BillStatus.valueOf(this[BillTable.status]),
+            successUrl = this[BillTable.successUrl],
+            cancelUrl = this[BillTable.cancelUrl],
             createdAt = this[BillTable.createdAt],
         )
 }

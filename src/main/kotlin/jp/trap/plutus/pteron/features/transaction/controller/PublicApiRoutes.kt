@@ -133,6 +133,8 @@ fun Route.publicApiRoutes() {
                 targetUserId = targetUser.id,
                 amount = request.amount,
                 description = request.description,
+                successUrl = request.successUrl,
+                cancelUrl = request.cancelUrl,
             )
 
         // 決済確認ページのURLを生成

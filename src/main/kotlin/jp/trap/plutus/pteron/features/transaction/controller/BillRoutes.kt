@@ -5,6 +5,7 @@ import io.ktor.server.resources.*
 import io.ktor.server.resources.post
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
+import jp.trap.plutus.pteron.common.exception.ConflictException
 import jp.trap.plutus.pteron.features.account.service.AccountService
 import jp.trap.plutus.pteron.features.project.service.ProjectService
 import jp.trap.plutus.pteron.features.transaction.domain.model.BillId
@@ -46,13 +47,39 @@ fun Route.billRoutes() {
         val billId = BillId(Uuid.parse(params.billId))
         val currentUser = userService.getUserByName(call.trapId)
 
-        val result = billService.approveBill(billId, currentUser.id)
+        // 決済失敗時はcancelUrlにリダイレクトさせるため、先にbillを取得
+        val bill = billService.getBill(billId)
 
-        // 成功時はプロジェクトのURLをリダイレクト先として返す
-        val project = projectService.getProjectDetails(result.bill.projectId)
-        val redirectUrl = project.url?.value ?: "/"
+        // 請求対象のユーザーのみが承認可能
+        if (bill.userId != currentUser.id) {
+            call.respond(HttpStatusCode.NotFound)
+            return@post
+        }
 
-        call.respond(ApproveBill200Response(redirectUrl = redirectUrl))
+        // フォールバック用にプロジェクトURLを取得
+        val project = projectService.getProjectDetails(bill.projectId)
+        val projectUrl = project.url?.value
+
+        try {
+            val result = billService.approveBill(billId, currentUser.id)
+
+            // 成功時: successUrl → cancelUrl → project.url → "/"
+            val redirectUrl = result.bill.successUrl
+                ?: result.bill.cancelUrl
+                ?: projectUrl
+                ?: "/"
+            call.respond(ApproveBill200Response(redirectUrl = redirectUrl))
+        } catch (e: ConflictException) {
+            // 重複approve等は409を返す
+            throw e
+        } catch (e: Exception) {
+            // 決済失敗時: cancelUrl → successUrl → project.url → "/"
+            val redirectUrl = bill.cancelUrl
+                ?: bill.successUrl
+                ?: projectUrl
+                ?: "/"
+            call.respond(ApproveBill200Response(redirectUrl = redirectUrl))
+        }
     }
 
     // POST /me/bills/{bill_id}/decline
@@ -60,9 +87,19 @@ fun Route.billRoutes() {
         val billId = BillId(Uuid.parse(params.billId))
         val currentUser = userService.getUserByName(call.trapId)
 
-        billService.declineBill(billId, currentUser.id)
+        val bill = billService.declineBill(billId, currentUser.id)
 
-        call.respond(HttpStatusCode.NoContent)
+        // フォールバック用にプロジェクトURLを取得
+        val project = projectService.getProjectDetails(bill.projectId)
+        val projectUrl = project.url?.value
+
+        // 拒否時: cancelUrl → successUrl → project.url → "/"
+        val redirectUrl = bill.cancelUrl
+            ?: bill.successUrl
+            ?: projectUrl
+            ?: "/"
+
+        call.respond(ApproveBill200Response(redirectUrl = redirectUrl))
     }
 }
 

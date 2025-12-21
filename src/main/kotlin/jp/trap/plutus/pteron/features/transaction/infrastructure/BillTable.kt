@@ -9,5 +9,7 @@ object BillTable : UUIDTable("bills", "id") {
     val projectId = uuid("project_id")
     val description = varchar("description", 1024).nullable()
     val status = varchar("status", 32)
+    val successUrl = varchar("success_url", 2048).nullable()
+    val cancelUrl = varchar("cancel_url", 2048).nullable()
     val createdAt = timestamp("created_at")
 }

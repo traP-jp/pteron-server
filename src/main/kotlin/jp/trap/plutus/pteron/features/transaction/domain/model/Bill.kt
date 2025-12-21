@@ -83,6 +83,8 @@ class Bill(
     val projectId: ProjectId,
     val description: String?,
     val status: BillStatus,
+    val successUrl: String?,
+    val cancelUrl: String?,
     val createdAt: Instant,
 ) {
     init {
@@ -114,6 +116,8 @@ class Bill(
                 projectId = projectId,
                 description = description,
                 status = BillStatus.PROCESSING,
+                successUrl = successUrl,
+                cancelUrl = cancelUrl,
                 createdAt = createdAt,
             ),
         )
@@ -134,6 +138,8 @@ class Bill(
                 projectId = projectId,
                 description = description,
                 status = BillStatus.COMPLETED,
+                successUrl = successUrl,
+                cancelUrl = cancelUrl,
                 createdAt = createdAt,
             ),
         )
@@ -154,6 +160,8 @@ class Bill(
                 projectId = projectId,
                 description = description,
                 status = BillStatus.REJECTED,
+                successUrl = successUrl,
+                cancelUrl = cancelUrl,
                 createdAt = createdAt,
             ),
         )
@@ -174,6 +182,8 @@ class Bill(
                 projectId = projectId,
                 description = description,
                 status = BillStatus.FAILED,
+                successUrl = successUrl,
+                cancelUrl = cancelUrl,
                 createdAt = createdAt,
             ),
         )

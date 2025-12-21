@@ -48,6 +48,8 @@ class BillService(
         targetUserId: UserId,
         amount: Long,
         description: String? = null,
+        successUrl: String?,
+        cancelUrl: String?,
     ): Bill {
         unitOfWork.runInTransaction { projectRepository.findById(projectId) }
             ?: throw NotFoundException("Project not found: $projectId")
@@ -63,6 +65,8 @@ class BillService(
                 projectId = projectId,
                 description = description,
                 status = BillStatus.PENDING,
+                successUrl = successUrl,
+                cancelUrl = cancelUrl,
                 createdAt = Clock.System.now(),
             )
 
