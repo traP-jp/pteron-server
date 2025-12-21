@@ -1,5 +1,6 @@
 package jp.trap.plutus.pteron.features.stats.service
 
+import jp.trap.plutus.pteron.common.domain.UnitOfWork
 import jp.trap.plutus.pteron.common.domain.model.ProjectId
 import jp.trap.plutus.pteron.common.domain.model.UserId
 import jp.trap.plutus.pteron.features.account.domain.gateway.EconomicGateway
@@ -25,12 +26,12 @@ class StatsUpdateJob(
     private val economicGateway: EconomicGateway,
     private val userRepository: UserRepository,
     private val projectRepository: ProjectRepository,
+    private val unitOfWork: UnitOfWork,
 ) {
     private val logger = LoggerFactory.getLogger(StatsUpdateJob::class.java)
 
     fun start(scope: CoroutineScope) {
         scope.launch {
-            // 初回実行を少し遅らせる（起動直後の負荷軽減）
             delay(10_000)
 
             while (isActive) {
@@ -50,19 +51,20 @@ class StatsUpdateJob(
 
         for (term in Term.entries) {
             try {
-                updateSystemStats(term)
-                updateUsersAggregateStats(term)
-                updateProjectsAggregateStats(term)
+                unitOfWork.runInTransaction {
+                    updateSystemStats(term)
+                    updateUsersAggregateStats(term)
+                    updateProjectsAggregateStats(term)
 
-                // 現在期間のランキングデータを取得して前期間との比較で差分を計算
-                val userRankingsCurrentTerm = calculateAllUserRankings(term)
-                val userRankingsPreviousTerm = calculateAllUserRankings(term, previous = true)
-                val projectRankingsCurrentTerm = calculateAllProjectRankings(term)
-                val projectRankingsPreviousTerm = calculateAllProjectRankings(term, previous = true)
+                    val userRankingsCurrentTerm = calculateAllUserRankings(term)
+                    val userRankingsPreviousTerm = calculateAllUserRankings(term, previous = true)
+                    val projectRankingsCurrentTerm = calculateAllProjectRankings(term)
+                    val projectRankingsPreviousTerm = calculateAllProjectRankings(term, previous = true)
 
-                for (rankingType in RankingType.entries) {
-                    updateUserRankings(term, rankingType, userRankingsCurrentTerm, userRankingsPreviousTerm)
-                    updateProjectRankings(term, rankingType, projectRankingsCurrentTerm, projectRankingsPreviousTerm)
+                    for (rankingType in RankingType.entries) {
+                        updateUserRankings(term, rankingType, userRankingsCurrentTerm, userRankingsPreviousTerm)
+                        updateProjectRankings(term, rankingType, projectRankingsCurrentTerm, projectRankingsPreviousTerm)
+                    }
                 }
             } catch (e: Exception) {
                 logger.error("Failed to update stats for term ${term.key}", e)
