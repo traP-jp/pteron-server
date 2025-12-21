@@ -95,7 +95,7 @@ class DatabaseStatsCacheRepository(
                     cursorData?.let { (cursorRank, _) ->
                         andWhere { StatsCacheUserRankingsTable.rank greater cursorRank }
                     }
-                }.orderBy(StatsCacheUserRankingsTable.rank, if (ascending) SortOrder.ASC else SortOrder.DESC)
+                }.orderBy(StatsCacheUserRankingsTable.rank, if (ascending) SortOrder.DESC else SortOrder.ASC)
                 .limit(limit + 1)
 
         val results =
@@ -139,7 +139,7 @@ class DatabaseStatsCacheRepository(
                     cursorData?.let { (cursorRank, _) ->
                         andWhere { StatsCacheProjectRankingsTable.rank greater cursorRank }
                     }
-                }.orderBy(StatsCacheProjectRankingsTable.rank, if (ascending) SortOrder.ASC else SortOrder.DESC)
+                }.orderBy(StatsCacheProjectRankingsTable.rank, if (ascending) SortOrder.DESC else SortOrder.ASC)
                 .limit(limit + 1)
 
         val results =
