@@ -27,6 +27,7 @@ import jp.trap.plutus.pteron.config.StartupHealthCheck
 import jp.trap.plutus.pteron.di.AppModule
 import jp.trap.plutus.pteron.features.project.controller.projectRoutes
 import jp.trap.plutus.pteron.features.project.service.ProjectService
+import jp.trap.plutus.pteron.features.system.service.SystemAccountService
 import jp.trap.plutus.pteron.features.transaction.controller.billRoutes
 import jp.trap.plutus.pteron.features.transaction.controller.publicApiRoutes
 import jp.trap.plutus.pteron.features.transaction.controller.transactionRoutes
@@ -63,6 +64,7 @@ fun Application.module() {
 
     val database by inject<Database>()
     val stub by inject<CornucopiaServiceCoroutineStub>()
+    val systemAccountService by inject<SystemAccountService>()
 
     runBlocking {
         launch(Dispatchers.IO) {
@@ -70,6 +72,7 @@ fun Application.module() {
         }
         launch {
             StartupHealthCheck.verifyGrpc(stub)
+            systemAccountService.initialize()
         }
     }
 

@@ -5,6 +5,7 @@ import jp.trap.plutus.pteron.common.domain.UnitOfWork
 import jp.trap.plutus.pteron.common.domain.model.UserId
 import jp.trap.plutus.pteron.common.exception.NotFoundException
 import jp.trap.plutus.pteron.features.account.domain.gateway.EconomicGateway
+import jp.trap.plutus.pteron.features.system.service.SystemAccountService
 import jp.trap.plutus.pteron.features.user.domain.model.User
 import jp.trap.plutus.pteron.features.user.domain.model.Username
 import jp.trap.plutus.pteron.features.user.domain.repository.UserRepository
@@ -17,6 +18,7 @@ class UserService(
     private val userRepository: UserRepository,
     private val economicGateway: EconomicGateway,
     private val unitOfWork: UnitOfWork,
+    private val systemAccountService: SystemAccountService,
 ) {
     suspend fun ensureUser(name: Username) {
         val existingUser = unitOfWork.runInTransaction { userRepository.findByUsername(name) }
@@ -40,6 +42,9 @@ class UserService(
                 } catch (e: Exception) {
                     throw IllegalStateException("Failed to create user: $name", e)
                 }
+                
+                // Welcome Bonus
+                systemAccountService.sendWelcomeBonusToUser(newUser.id, newUser.accountId)
             }
         }
     }

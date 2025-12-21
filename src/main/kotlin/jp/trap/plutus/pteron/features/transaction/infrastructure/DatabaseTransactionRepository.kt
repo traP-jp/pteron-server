@@ -42,8 +42,8 @@ class DatabaseTransactionRepository : TransactionRepository {
             it[id] = transaction.id.value.toJavaUuid()
             it[type] = transaction.type.name
             it[amount] = transaction.amount
-            it[projectId] = transaction.projectId.value.toJavaUuid()
-            it[userId] = transaction.userId.value.toJavaUuid()
+            it[projectId] = transaction.projectId?.value?.toJavaUuid()
+            it[userId] = transaction.userId?.value?.toJavaUuid()
             it[description] = transaction.description
             it[createdAt] = transaction.createdAt
         }
@@ -105,8 +105,8 @@ class DatabaseTransactionRepository : TransactionRepository {
             id = TransactionId(this[TransactionTable.id].value.toKotlinUuid()),
             type = TransactionType.valueOf(this[TransactionTable.type]),
             amount = this[TransactionTable.amount],
-            projectId = ProjectId(this[TransactionTable.projectId].toKotlinUuid()),
-            userId = UserId(this[TransactionTable.userId].toKotlinUuid()),
+            projectId = this[TransactionTable.projectId]?.let { ProjectId(it.toKotlinUuid()) },
+            userId = this[TransactionTable.userId]?.let { UserId(it.toKotlinUuid()) },
             description = this[TransactionTable.description],
             createdAt = this[TransactionTable.createdAt],
         )

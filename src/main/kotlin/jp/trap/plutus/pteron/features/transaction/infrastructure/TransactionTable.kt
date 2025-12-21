@@ -6,8 +6,8 @@ import org.jetbrains.exposed.v1.datetime.timestamp
 object TransactionTable : UUIDTable("transactions", "id") {
     val type = varchar("type", 32)
     val amount = long("amount")
-    val projectId = uuid("project_id")
-    val userId = uuid("user_id")
+    val projectId = uuid("project_id").nullable()
+    val userId = uuid("user_id").nullable()
     val description = varchar("description", 1024).nullable()
     val createdAt = timestamp("created_at")
 }

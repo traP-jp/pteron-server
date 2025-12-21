@@ -11,8 +11,8 @@ class Transaction(
     val id: TransactionId,
     val type: TransactionType,
     val amount: Long,
-    val projectId: ProjectId,
-    val userId: UserId,
+    val projectId: ProjectId?,
+    val userId: UserId?,
     val description: String?,
     val createdAt: Instant,
 ) {

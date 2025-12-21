@@ -13,4 +13,9 @@ enum class TransactionType {
      * プロジェクトへの請求の支払い
      */
     BILL_PAYMENT,
+
+    /**
+     * システムからプロジェクトorユーザーへの支払い
+     */
+    SYSTEM,
 }

@@ -13,6 +13,7 @@ import jp.trap.plutus.pteron.features.project.domain.ApiClientCreationResult
 import jp.trap.plutus.pteron.features.project.domain.ApiClientCreator
 import jp.trap.plutus.pteron.features.project.domain.model.*
 import jp.trap.plutus.pteron.features.project.domain.repository.ProjectRepository
+import jp.trap.plutus.pteron.features.system.service.SystemAccountService
 import org.koin.core.annotation.Single
 import kotlin.uuid.Uuid
 import kotlin.uuid.toKotlinUuid
@@ -22,6 +23,7 @@ class ProjectService(
     private val projectRepository: ProjectRepository,
     private val economicGateway: EconomicGateway,
     private val unitOfWork: UnitOfWork,
+    private val systemAccountService: SystemAccountService,
 ) {
     suspend fun getProjects(): List<Project> =
         unitOfWork.runInTransaction {
@@ -76,6 +78,10 @@ class ProjectService(
                     url = url,
                 )
             projectRepository.save(project)
+            
+            // Welcome Bonus
+            systemAccountService.sendWelcomeBonusToProject(project.id, project.accountId)
+            
             project
         }
     }

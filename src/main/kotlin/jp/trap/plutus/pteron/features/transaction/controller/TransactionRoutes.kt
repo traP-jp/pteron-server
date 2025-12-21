@@ -4,6 +4,7 @@ import io.ktor.server.resources.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import jp.trap.plutus.pteron.common.domain.model.AccountId
+import jp.trap.plutus.pteron.common.domain.model.ProjectId
 import jp.trap.plutus.pteron.common.domain.model.UserId
 import jp.trap.plutus.pteron.features.account.domain.model.Account
 import jp.trap.plutus.pteron.features.account.service.AccountService
@@ -95,12 +96,12 @@ private suspend fun createTransactionDtos(
     if (transactions.isEmpty()) return emptyList()
 
     // プロジェクト情報を一括取得
-    val projectIds = transactions.map { it.projectId }.distinct()
+    val projectIds = transactions.mapNotNull { it.projectId }.distinct()
     val projects = projectService.getProjectsByIds(projectIds)
     val projectMap = projects.associateBy { it.id }
 
     // ユーザー情報を一括取得
-    val transactionUserIds = transactions.map { it.userId }
+    val transactionUserIds = transactions.mapNotNull { it.userId }
     val projectOwnerIds = projects.map { it.ownerId }
     val projectAdminIds = projects.flatMap { it.adminIds }
     val userIds = (transactionUserIds + projectOwnerIds + projectAdminIds).distinct()
@@ -113,41 +114,46 @@ private suspend fun createTransactionDtos(
     val accountMap = accounts.associateBy { it.accountId }
 
     return transactions.map { transaction ->
-        val user =
-            userMap[transaction.userId]
-                ?: throw IllegalStateException("User not found: ${transaction.userId}")
-        val project =
-            projectMap[transaction.projectId]
-                ?: throw IllegalStateException("Project not found: ${transaction.projectId}")
-        val userAccount =
-            accountMap[user.accountId]
-                ?: throw IllegalStateException("User account not found: ${user.accountId}")
-        val projectAccount =
-            accountMap[project.accountId]
-                ?: throw IllegalStateException("Project account not found: ${project.accountId}")
-
-        createTransactionDto(transaction, user, userAccount, project, projectAccount, userMap, accountMap)
+        createTransactionDto(transaction, userMap, projectMap, accountMap)
     }
 }
 
 private fun createTransactionDto(
     transaction: Transaction,
-    user: User,
-    userAccount: Account,
-    project: Project,
-    projectAccount: Account,
     userMap: Map<UserId, User>,
+    projectMap: Map<ProjectId, Project>,
     accountMap: Map<AccountId, Account>,
-): TransactionDto =
-    TransactionDto(
+): TransactionDto {
+    // userがnullの場合（SYSTEM取引など）
+    val userDto = transaction.userId?.let { userId ->
+        val user = userMap[userId]
+        user?.let { u ->
+            accountMap[u.accountId]?.let { account ->
+                createUserDto(u, account)
+            }
+        }
+    }
+
+    // projectがnullの場合（SYSTEM取引など）
+    val projectDto = transaction.projectId?.let { projectId ->
+        val project = projectMap[projectId]
+        project?.let { p ->
+            accountMap[p.accountId]?.let { projectAccount ->
+                createProjectDto(p, projectAccount, userMap, accountMap)
+            }
+        }
+    }
+
+    return TransactionDto(
         id = transaction.id.value,
         type = TransactionDto.Type.valueOf(transaction.type.name),
         amount = transaction.amount,
-        project = createProjectDto(project, projectAccount, userMap, accountMap),
-        user = createUserDto(user, userAccount),
+        project = projectDto,
+        user = userDto,
         description = transaction.description,
         createdAt = transaction.createdAt,
     )
+}
 
 private fun createUserDto(
     user: User,
@@ -165,12 +171,9 @@ private fun createProjectDto(
     userMap: Map<UserId, User>,
     accountMap: Map<AccountId, Account>,
 ): ProjectDto {
-    val owner =
-        userMap[project.ownerId]
-            ?: throw IllegalStateException("Owner not found: ${project.ownerId}")
+    val owner = userMap[project.ownerId] ?: throw IllegalStateException("Owner not found: ${project.ownerId}")
     val ownerAccount =
-        accountMap[owner.accountId]
-            ?: throw IllegalStateException("Owner account not found: ${owner.accountId}")
+        accountMap[owner.accountId] ?: throw IllegalStateException("Owner account not found: ${owner.accountId}")
 
     val adminDtos =
         project.adminIds.mapNotNull { adminId ->

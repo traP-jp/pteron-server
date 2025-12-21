@@ -13,6 +13,9 @@ object Environment {
     val GRPC_PORT: Int by envInt("GRPC_PORT", default = 50051)
     val GRPC_TOKEN: String by envString("GRPC_TOKEN", required = true)
 
+    val WELCOME_BONUS_USER: Long by envLong("WELCOME_BONUS_USER", default = 1000L)
+    val WELCOME_BONUS_PROJECT: Long by envLong("WELCOME_BONUS_PROJECT", default = 1000L)
+
     val PUBLIC_URL: String by envString("PUBLIC_URL", default = "http://localhost:8080")
 
     fun validate() {
@@ -101,6 +104,35 @@ private class EnvBoolean(
     override fun isInitialized(): Boolean = cached != null
 }
 
+private class EnvLong(
+    private val name: String,
+    private val default: Long?,
+    private val required: Boolean,
+) : Lazy<Long> {
+    private var cached: Long? = null
+    private var initialized = false
+
+    override val value: Long
+        get() {
+            if (!initialized) {
+                val strValue = System.getenv(name)
+                cached = strValue?.toLongOrNull()
+                    ?: default
+                    ?: if (required) {
+                        throw IllegalStateException("必須の環境変数 '$name' が設定されていません")
+                    } else if (strValue != null) {
+                        throw IllegalStateException("環境変数 '$name' の値 '$strValue' は整数ではありません")
+                    } else {
+                        0L
+                    }
+                initialized = true
+            }
+            return cached!!
+        }
+
+    override fun isInitialized(): Boolean = initialized
+}
+
 private fun envString(
     name: String,
     default: String? = null,
@@ -117,3 +149,9 @@ private fun envBoolean(
     name: String,
     default: Boolean = false,
 ): Lazy<Boolean> = EnvBoolean(name, default)
+
+private fun envLong(
+    name: String,
+    default: Long? = null,
+    required: Boolean = false,
+): Lazy<Long> = EnvLong(name, default, required)
