@@ -6,13 +6,13 @@ import jp.trap.plutus.pteron.common.infrastructure.PaginationCursor
 import jp.trap.plutus.pteron.features.transaction.domain.model.Transaction
 import jp.trap.plutus.pteron.features.transaction.domain.model.TransactionId
 import jp.trap.plutus.pteron.features.transaction.domain.model.TransactionType
-import jp.trap.plutus.pteron.features.transaction.domain.repository.TransactionQueryOptions
-import jp.trap.plutus.pteron.features.transaction.domain.repository.TransactionQueryResult
-import jp.trap.plutus.pteron.features.transaction.domain.repository.TransactionRepository
+import jp.trap.plutus.pteron.features.transaction.domain.repository.*
 import org.jetbrains.exposed.v1.core.*
 import org.jetbrains.exposed.v1.jdbc.insert
+import org.jetbrains.exposed.v1.jdbc.select
 import org.jetbrains.exposed.v1.jdbc.selectAll
 import org.koin.core.annotation.Single
+import kotlin.time.Instant
 import kotlin.uuid.toJavaUuid
 import kotlin.uuid.toKotlinUuid
 
@@ -49,6 +49,211 @@ class DatabaseTransactionRepository : TransactionRepository {
         }
         return transaction
     }
+
+    // === 統計用集計メソッド ===
+
+    override suspend fun getStats(since: Instant): TransactionStatsData {
+        val countCol = TransactionTable.id.count()
+        val sumCol = TransactionTable.amount.sum()
+
+        // 入金（TRANSFER, SYSTEM）
+        val inResult =
+            TransactionTable
+                .select(countCol, sumCol)
+                .where {
+                    (TransactionTable.createdAt greaterEq since) and
+                        ((TransactionTable.type eq "TRANSFER") or (TransactionTable.type eq "SYSTEM"))
+                }.singleOrNull()
+
+        val inCount = inResult?.get(countCol) ?: 0L
+        val inAmount = inResult?.get(sumCol) ?: 0L
+
+        // 出金（BILL_PAYMENT）
+        val outResult =
+            TransactionTable
+                .select(countCol, sumCol)
+                .where {
+                    (TransactionTable.createdAt greaterEq since) and
+                        (TransactionTable.type eq "BILL_PAYMENT")
+                }.singleOrNull()
+
+        val outCount = outResult?.get(countCol) ?: 0L
+        val outAmount = outResult?.get(sumCol) ?: 0L
+
+        return TransactionStatsData(
+            count = inCount + outCount,
+            total = inAmount + outAmount,
+            netChange = inAmount - outAmount,
+        )
+    }
+
+    override suspend fun getUsersStats(since: Instant): TransactionStatsData {
+        val countCol = TransactionTable.id.count()
+        val sumCol = TransactionTable.amount.sum()
+
+        // TRANSFERとSYSTEMはユーザーへの入金（ユーザーに関連する取引のみ）
+        val inResult =
+            TransactionTable
+                .select(countCol, sumCol)
+                .where {
+                    (TransactionTable.createdAt greaterEq since) and
+                        (TransactionTable.userId.isNotNull()) and
+                        ((TransactionTable.type eq "TRANSFER") or (TransactionTable.type eq "SYSTEM"))
+                }.singleOrNull()
+
+        val inCount = inResult?.get(countCol) ?: 0L
+        val inAmount = inResult?.get(sumCol) ?: 0L
+
+        // BILL_PAYMENTはユーザーからの出金（ユーザーに関連する取引のみ）
+        val outResult =
+            TransactionTable
+                .select(countCol, sumCol)
+                .where {
+                    (TransactionTable.createdAt greaterEq since) and
+                        (TransactionTable.userId.isNotNull()) and
+                        (TransactionTable.type eq "BILL_PAYMENT")
+                }.singleOrNull()
+
+        val outCount = outResult?.get(countCol) ?: 0L
+        val outAmount = outResult?.get(sumCol) ?: 0L
+
+        return TransactionStatsData(
+            count = inCount + outCount,
+            total = inAmount + outAmount,
+            netChange = inAmount - outAmount,
+        )
+    }
+
+    override suspend fun getProjectsStats(since: Instant): TransactionStatsData {
+        val countCol = TransactionTable.id.count()
+        val sumCol = TransactionTable.amount.sum()
+
+        // BILL_PAYMENTとSYSTEMはプロジェクトへの入金（プロジェクトに関連する取引のみ）
+        val inResult =
+            TransactionTable
+                .select(countCol, sumCol)
+                .where {
+                    (TransactionTable.createdAt greaterEq since) and
+                        (TransactionTable.projectId.isNotNull()) and
+                        ((TransactionTable.type eq "BILL_PAYMENT") or (TransactionTable.type eq "SYSTEM"))
+                }.singleOrNull()
+
+        val inCount = inResult?.get(countCol) ?: 0L
+        val inAmount = inResult?.get(sumCol) ?: 0L
+
+        // TRANSFERはプロジェクトからの出金（プロジェクトに関連する取引のみ）
+        val outResult =
+            TransactionTable
+                .select(countCol, sumCol)
+                .where {
+                    (TransactionTable.createdAt greaterEq since) and
+                        (TransactionTable.projectId.isNotNull()) and
+                        (TransactionTable.type eq "TRANSFER")
+                }.singleOrNull()
+
+        val outCount = outResult?.get(countCol) ?: 0L
+        val outAmount = outResult?.get(sumCol) ?: 0L
+
+        return TransactionStatsData(
+            count = inCount + outCount,
+            total = inAmount + outAmount,
+            netChange = inAmount - outAmount,
+        )
+    }
+
+    override suspend fun getUserStats(
+        userId: UserId,
+        since: Instant,
+        until: Instant,
+    ): TransactionStatsData {
+        val countCol = TransactionTable.id.count()
+        val sumCol = TransactionTable.amount.sum()
+        val userIdJava = userId.value.toJavaUuid()
+
+        // TRANSFERとSYSTEMはユーザーへの入金
+        val inResult =
+            TransactionTable
+                .select(countCol, sumCol)
+                .where {
+                    (TransactionTable.userId eq userIdJava) and
+                        (TransactionTable.createdAt greaterEq since) and
+                        (TransactionTable.createdAt less until) and
+                        ((TransactionTable.type eq "TRANSFER") or (TransactionTable.type eq "SYSTEM"))
+                }.singleOrNull()
+
+        val inCount = inResult?.get(countCol) ?: 0L
+        val inAmount = inResult?.get(sumCol) ?: 0L
+
+        // BILL_PAYMENTはユーザーからの出金
+        val outResult =
+            TransactionTable
+                .select(countCol, sumCol)
+                .where {
+                    (TransactionTable.userId eq userIdJava) and
+                        (TransactionTable.createdAt greaterEq since) and
+                        (TransactionTable.createdAt less until) and
+                        (TransactionTable.type eq "BILL_PAYMENT")
+                }.singleOrNull()
+
+        val outCount = outResult?.get(countCol) ?: 0L
+        val outAmount = outResult?.get(sumCol) ?: 0L
+
+        return TransactionStatsData(
+            count = inCount + outCount,
+            total = inAmount + outAmount,
+            netChange = inAmount - outAmount,
+            inAmount = inAmount,
+            outAmount = outAmount,
+        )
+    }
+
+    override suspend fun getProjectStats(
+        projectId: ProjectId,
+        since: Instant,
+        until: Instant,
+    ): TransactionStatsData {
+        val countCol = TransactionTable.id.count()
+        val sumCol = TransactionTable.amount.sum()
+        val projectIdJava = projectId.value.toJavaUuid()
+
+        // BILL_PAYMENTとSYSTEMはプロジェクトへの入金
+        val inResult =
+            TransactionTable
+                .select(countCol, sumCol)
+                .where {
+                    (TransactionTable.projectId eq projectIdJava) and
+                        (TransactionTable.createdAt greaterEq since) and
+                        (TransactionTable.createdAt less until) and
+                        ((TransactionTable.type eq "BILL_PAYMENT") or (TransactionTable.type eq "SYSTEM"))
+                }.singleOrNull()
+
+        val inCount = inResult?.get(countCol) ?: 0L
+        val inAmount = inResult?.get(sumCol) ?: 0L
+
+        // TRANSFERはプロジェクトからの出金
+        val outResult =
+            TransactionTable
+                .select(countCol, sumCol)
+                .where {
+                    (TransactionTable.projectId eq projectIdJava) and
+                        (TransactionTable.createdAt greaterEq since) and
+                        (TransactionTable.createdAt less until) and
+                        (TransactionTable.type eq "TRANSFER")
+                }.singleOrNull()
+
+        val outCount = outResult?.get(countCol) ?: 0L
+        val outAmount = outResult?.get(sumCol) ?: 0L
+
+        return TransactionStatsData(
+            count = inCount + outCount,
+            total = inAmount + outAmount,
+            netChange = inAmount - outAmount,
+            inAmount = inAmount,
+            outAmount = outAmount,
+        )
+    }
+
+    // === Private helper methods ===
 
     private fun executeQuery(
         options: TransactionQueryOptions,
@@ -110,4 +315,72 @@ class DatabaseTransactionRepository : TransactionRepository {
             description = this[TransactionTable.description],
             createdAt = this[TransactionTable.createdAt],
         )
+
+    override suspend fun getUserBalanceChangeAfter(
+        userId: UserId,
+        after: Instant,
+    ): BalanceChangeData {
+        val sumCol = TransactionTable.amount.sum()
+        val userIdJava = userId.value.toJavaUuid()
+
+        // TRANSFERとSYSTEMはユーザーへの入金
+        val inResult =
+            TransactionTable
+                .select(sumCol)
+                .where {
+                    (TransactionTable.userId eq userIdJava) and
+                        (TransactionTable.createdAt greater after) and
+                        ((TransactionTable.type eq "TRANSFER") or (TransactionTable.type eq "SYSTEM"))
+                }.singleOrNull()
+
+        val inAmount = inResult?.get(sumCol) ?: 0L
+
+        // BILL_PAYMENTはユーザーからの出金
+        val outResult =
+            TransactionTable
+                .select(sumCol)
+                .where {
+                    (TransactionTable.userId eq userIdJava) and
+                        (TransactionTable.createdAt greater after) and
+                        (TransactionTable.type eq "BILL_PAYMENT")
+                }.singleOrNull()
+
+        val outAmount = outResult?.get(sumCol) ?: 0L
+
+        return BalanceChangeData(inAmount = inAmount, outAmount = outAmount)
+    }
+
+    override suspend fun getProjectBalanceChangeAfter(
+        projectId: ProjectId,
+        after: Instant,
+    ): BalanceChangeData {
+        val sumCol = TransactionTable.amount.sum()
+        val projectIdJava = projectId.value.toJavaUuid()
+
+        // BILL_PAYMENTとSYSTEMはプロジェクトへの入金
+        val inResult =
+            TransactionTable
+                .select(sumCol)
+                .where {
+                    (TransactionTable.projectId eq projectIdJava) and
+                        (TransactionTable.createdAt greater after) and
+                        ((TransactionTable.type eq "BILL_PAYMENT") or (TransactionTable.type eq "SYSTEM"))
+                }.singleOrNull()
+
+        val inAmount = inResult?.get(sumCol) ?: 0L
+
+        // TRANSFERはプロジェクトからの出金
+        val outResult =
+            TransactionTable
+                .select(sumCol)
+                .where {
+                    (TransactionTable.projectId eq projectIdJava) and
+                        (TransactionTable.createdAt greater after) and
+                        (TransactionTable.type eq "TRANSFER")
+                }.singleOrNull()
+
+        val outAmount = outResult?.get(sumCol) ?: 0L
+
+        return BalanceChangeData(inAmount = inAmount, outAmount = outAmount)
+    }
 }
