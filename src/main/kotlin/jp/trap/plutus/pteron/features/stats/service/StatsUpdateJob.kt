@@ -63,7 +63,12 @@ class StatsUpdateJob(
 
                     for (rankingType in RankingType.entries) {
                         updateUserRankings(term, rankingType, userRankingsCurrentTerm, userRankingsPreviousTerm)
-                        updateProjectRankings(term, rankingType, projectRankingsCurrentTerm, projectRankingsPreviousTerm)
+                        updateProjectRankings(
+                            term,
+                            rankingType,
+                            projectRankingsCurrentTerm,
+                            projectRankingsPreviousTerm
+                        )
                     }
                 }
             } catch (e: Exception) {
