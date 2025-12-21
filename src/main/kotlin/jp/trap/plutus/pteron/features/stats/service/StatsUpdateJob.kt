@@ -317,18 +317,26 @@ class StatsUpdateJob(
         }
 
         // 現在のランキング（降順）
-        val currentRanked =
-            currentData
-                .sortedByDescending { getValue(it) }
-                .mapIndexed { index, data -> data.userId to (index + 1L) }
-                .toMap()
+        val sortedCurrent = currentData.sortedByDescending { getValue(it) }
+        val currentRanked = mutableMapOf<UserId, Long>()
+        sortedCurrent.forEachIndexed { index, data ->
+            if (index > 0 && getValue(data) == getValue(sortedCurrent[index - 1])) {
+                currentRanked[data.userId] = currentRanked[sortedCurrent[index - 1].userId]!!
+            } else {
+                currentRanked[data.userId] = index + 1L
+            }
+        }
 
         // 前期間のランキング
-        val previousRanked =
-            previousData
-                .sortedByDescending { getValue(it) }
-                .mapIndexed { index, data -> data.userId to (index + 1L) }
-                .toMap()
+        val sortedPrevious = previousData.sortedByDescending { getValue(it) }
+        val previousRanked = mutableMapOf<UserId, Long>()
+        sortedPrevious.forEachIndexed { index, data ->
+            if (index > 0 && getValue(data) == getValue(sortedPrevious[index - 1])) {
+                previousRanked[data.userId] = previousRanked[sortedPrevious[index - 1].userId]!!
+            } else {
+                previousRanked[data.userId] = index + 1L
+            }
+        }
 
         val entries =
             currentData.map { data ->
@@ -366,17 +374,25 @@ class StatsUpdateJob(
             }
         }
 
-        val currentRanked =
-            currentData
-                .sortedByDescending { getValue(it) }
-                .mapIndexed { index, data -> data.projectId to (index + 1L) }
-                .toMap()
+        val sortedCurrent = currentData.sortedByDescending { getValue(it) }
+        val currentRanked = mutableMapOf<ProjectId, Long>()
+        sortedCurrent.forEachIndexed { index, data ->
+            if (index > 0 && getValue(data) == getValue(sortedCurrent[index - 1])) {
+                currentRanked[data.projectId] = currentRanked[sortedCurrent[index - 1].projectId]!!
+            } else {
+                currentRanked[data.projectId] = index + 1L
+            }
+        }
 
-        val previousRanked =
-            previousData
-                .sortedByDescending { getValue(it) }
-                .mapIndexed { index, data -> data.projectId to (index + 1L) }
-                .toMap()
+        val sortedPrevious = previousData.sortedByDescending { getValue(it) }
+        val previousRanked = mutableMapOf<ProjectId, Long>()
+        sortedPrevious.forEachIndexed { index, data ->
+            if (index > 0 && getValue(data) == getValue(sortedPrevious[index - 1])) {
+                previousRanked[data.projectId] = previousRanked[sortedPrevious[index - 1].projectId]!!
+            } else {
+                previousRanked[data.projectId] = index + 1L
+            }
+        }
 
         val entries =
             currentData.map { data ->
