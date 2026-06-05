@@ -161,6 +161,7 @@ fun Application.module() {
             Slf4jReporter
                 .forRegistry(registry)
                 .outputTo(this@module.log)
+                .withLoggingLevel(Slf4jReporter.LoggingLevel.DEBUG)
                 .convertRatesTo(TimeUnit.SECONDS)
                 .convertDurationsTo(TimeUnit.MILLISECONDS)
                 .build()
