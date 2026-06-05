@@ -1,14 +1,17 @@
 package jp.trap.plutus.pteron.features.stats.service
 
 import jp.trap.plutus.pteron.common.domain.UnitOfWork
+import jp.trap.plutus.pteron.common.domain.model.AccountId
 import jp.trap.plutus.pteron.common.domain.model.ProjectId
 import jp.trap.plutus.pteron.common.domain.model.UserId
 import jp.trap.plutus.pteron.common.exception.NotFoundException
 import jp.trap.plutus.pteron.features.account.domain.gateway.EconomicGateway
+import jp.trap.plutus.pteron.features.account.domain.model.Account
 import jp.trap.plutus.pteron.features.project.domain.model.Project
 import jp.trap.plutus.pteron.features.project.domain.repository.ProjectRepository
 import jp.trap.plutus.pteron.features.stats.domain.model.*
 import jp.trap.plutus.pteron.features.stats.domain.repository.StatsCacheRepository
+import jp.trap.plutus.pteron.features.transaction.domain.repository.TransactionRepository
 import jp.trap.plutus.pteron.features.user.domain.model.User
 import jp.trap.plutus.pteron.features.user.domain.repository.UserRepository
 import org.koin.core.annotation.Single
@@ -80,6 +83,7 @@ class StatsService(
     private val statsCacheRepository: StatsCacheRepository,
     private val userRepository: UserRepository,
     private val projectRepository: ProjectRepository,
+    private val transactionRepository: TransactionRepository,
     private val economicGateway: EconomicGateway,
     private val unitOfWork: UnitOfWork,
 ) {
@@ -104,33 +108,34 @@ class StatsService(
         ascending: Boolean = false,
         limit: Int = 20,
         cursor: String? = null,
-    ): UserRankingResult =
-        unitOfWork.runInTransaction {
-            val result = statsCacheRepository.getUserRankings(rankingType, term, ascending, limit, cursor)
+    ): UserRankingResult {
+        val (result, users) =
+            unitOfWork.runInTransaction {
+                val result = statsCacheRepository.getUserRankings(rankingType, term, ascending, limit, cursor)
+                val userIds = result.items.map { it.userId }
+                val users = userRepository.findByIds(userIds)
 
-            val userIds = result.items.map { it.userId }
-            val users = userRepository.findByIds(userIds)
-            val usersMap = users.associateBy { it.id }
+                result to users
+            }
 
-            val accountIds = users.map { it.accountId }
-            val accounts = economicGateway.findAccountsByIds(accountIds)
-            val accountBalanceMap = accounts.associateBy { it.accountId }
+        val usersMap = users.associateBy { it.id }
+        val accountBalanceMap = findAccountBalanceMap(users.map { it.accountId })
 
-            val items =
-                result.items.mapNotNull { entry ->
-                    val user = usersMap[entry.userId] ?: return@mapNotNull null
-                    val balance = accountBalanceMap[user.accountId]?.balance ?: 0L
-                    UserRankingItem(
-                        rank = entry.rank,
-                        value = entry.value,
-                        difference = entry.difference,
-                        user = user,
-                        balance = balance,
-                    )
-                }
+        val items =
+            result.items.mapNotNull { entry ->
+                val user = usersMap[entry.userId] ?: return@mapNotNull null
+                val balance = accountBalanceMap[user.accountId]?.balance ?: 0L
+                UserRankingItem(
+                    rank = entry.rank,
+                    value = entry.value,
+                    difference = entry.difference,
+                    user = user,
+                    balance = balance,
+                )
+            }
 
-            UserRankingResult(items, result.nextCursor)
-        }
+        return UserRankingResult(items, result.nextCursor)
+    }
 
     suspend fun getProjectRankings(
         rankingType: RankingType,
@@ -138,123 +143,181 @@ class StatsService(
         ascending: Boolean = false,
         limit: Int = 20,
         cursor: String? = null,
-    ): ProjectRankingResult =
-        unitOfWork.runInTransaction {
-            val result = statsCacheRepository.getProjectRankings(rankingType, term, ascending, limit, cursor)
+    ): ProjectRankingResult {
+        val rankingData =
+            unitOfWork.runInTransaction {
+                val result = statsCacheRepository.getProjectRankings(rankingType, term, ascending, limit, cursor)
+                val projects = projectRepository.findAll()
+                val ownerIds = projects.map { it.ownerId }.distinct()
+                val owners = userRepository.findByIds(ownerIds)
+                val allAdminIds = projects.flatMap { it.adminIds }.distinct()
+                val allAdmins = userRepository.findByIds(allAdminIds)
 
-            val projects = projectRepository.findAll()
-            val projectsMap = projects.associateBy { it.id }
+                ProjectRankingData(
+                    result = result,
+                    projects = projects,
+                    owners = owners,
+                    admins = allAdmins,
+                )
+            }
 
-            val ownerIds = projects.map { it.ownerId }.distinct()
-            val owners = userRepository.findByIds(ownerIds)
-            val ownersMap = owners.associateBy { it.id }
+        val projectsMap = rankingData.projects.associateBy { it.id }
+        val ownersMap = rankingData.owners.associateBy { it.id }
+        val adminsMap = rankingData.admins.associateBy { it.id }
+        val accountIds =
+            rankingData.projects.map { it.accountId } +
+                rankingData.owners.map { it.accountId } +
+                rankingData.admins.map { it.accountId }
+        val accountBalanceMap = findAccountBalanceMap(accountIds)
 
-            val allAdminIds = projects.flatMap { it.adminIds }.distinct()
-            val allAdmins = userRepository.findByIds(allAdminIds)
-            val adminsMap = allAdmins.associateBy { it.id }
+        val items =
+            rankingData.result.items.mapNotNull { entry ->
+                val project = projectsMap[entry.projectId] ?: return@mapNotNull null
+                val owner = ownersMap[project.ownerId] ?: return@mapNotNull null
+                val projectBalance = accountBalanceMap[project.accountId]?.balance ?: 0L
+                val ownerBalance = accountBalanceMap[owner.accountId]?.balance ?: 0L
 
-            val accountIds =
-                projects.map { it.accountId } +
-                    owners.map { it.accountId } +
-                    allAdmins.map { it.accountId }
-            val accounts = economicGateway.findAccountsByIds(accountIds.distinct())
-            val accountBalanceMap = accounts.associateBy { it.accountId }
+                val admins =
+                    project.adminIds.mapNotNull { adminId ->
+                        val admin = adminsMap[adminId] ?: return@mapNotNull null
+                        val adminBalance = accountBalanceMap[admin.accountId]?.balance ?: 0L
+                        AdminInfo(admin, adminBalance)
+                    }
 
-            val items =
-                result.items.mapNotNull { entry ->
-                    val project = projectsMap[entry.projectId] ?: return@mapNotNull null
-                    val owner = ownersMap[project.ownerId] ?: return@mapNotNull null
-                    val projectBalance = accountBalanceMap[project.accountId]?.balance ?: 0L
-                    val ownerBalance = accountBalanceMap[owner.accountId]?.balance ?: 0L
+                ProjectRankingItem(
+                    rank = entry.rank,
+                    value = entry.value,
+                    difference = entry.difference,
+                    project = project,
+                    projectBalance = projectBalance,
+                    owner = owner,
+                    ownerBalance = ownerBalance,
+                    admins = admins,
+                )
+            }
 
-                    val admins =
-                        project.adminIds.mapNotNull { adminId ->
-                            val admin = adminsMap[adminId] ?: return@mapNotNull null
-                            val adminBalance = accountBalanceMap[admin.accountId]?.balance ?: 0L
-                            AdminInfo(admin, adminBalance)
-                        }
-
-                    ProjectRankingItem(
-                        rank = entry.rank,
-                        value = entry.value,
-                        difference = entry.difference,
-                        project = project,
-                        projectBalance = projectBalance,
-                        owner = owner,
-                        ownerBalance = ownerBalance,
-                        admins = admins,
-                    )
-                }
-
-            ProjectRankingResult(items, result.nextCursor)
-        }
+        return ProjectRankingResult(items, rankingData.result.nextCursor)
+    }
 
     suspend fun getUserStats(
         userId: UserId,
         term: Term,
-    ): UserStatsResult =
-        unitOfWork.runInTransaction {
-            val user =
-                userRepository.findById(userId)
-                    ?: throw NotFoundException("User not found")
+    ): UserStatsResult {
+        val (user, stats) =
+            unitOfWork.runInTransaction {
+                val user =
+                    userRepository.findById(userId)
+                        ?: throw NotFoundException("User not found")
 
-            val stats =
-                statsCacheRepository.getUserStats(userId, term)
-                    ?: throw NotFoundException("Stats not available for this user")
+                val stats =
+                    statsCacheRepository.getUserStats(userId, term)
+                        ?: throw NotFoundException("Stats not available for this user")
 
-            val balance = economicGateway.findAccountById(user.accountId)?.balance ?: 0L
+                user to stats
+            }
 
-            UserStatsResult(stats, user, balance)
-        }
+        val balance = economicGateway.findAccountById(user.accountId)?.balance ?: 0L
+
+        return UserStatsResult(stats, user, balance)
+    }
 
     suspend fun getProjectStats(
         projectId: ProjectId,
         term: Term,
-    ): ProjectStatsResult =
-        unitOfWork.runInTransaction {
-            val project =
-                projectRepository.findById(projectId)
-                    ?: throw NotFoundException("Project not found")
+    ): ProjectStatsResult {
+        val statsData =
+            unitOfWork.runInTransaction {
+                val project =
+                    projectRepository.findById(projectId)
+                        ?: throw NotFoundException("Project not found")
 
-            val stats =
-                statsCacheRepository.getProjectStats(projectId, term)
-                    ?: throw NotFoundException("Stats not available for this project")
+                val stats =
+                    statsCacheRepository.getProjectStats(projectId, term)
+                        ?: throw NotFoundException("Stats not available for this project")
 
-            val owner =
-                userRepository.findById(project.ownerId)
-                    ?: throw NotFoundException("Owner not found")
+                val owner =
+                    userRepository.findById(project.ownerId)
+                        ?: throw NotFoundException("Owner not found")
 
-            val adminUsers = userRepository.findByIds(project.adminIds)
+                val adminUsers = userRepository.findByIds(project.adminIds)
 
-            val accountIds = listOf(project.accountId, owner.accountId) + adminUsers.map { it.accountId }
-            val accounts = economicGateway.findAccountsByIds(accountIds)
-            val accountBalanceMap = accounts.associateBy { it.accountId }
+                ProjectStatsData(
+                    project = project,
+                    stats = stats,
+                    owner = owner,
+                    adminUsers = adminUsers,
+                )
+            }
 
-            val projectBalance = accountBalanceMap[project.accountId]?.balance ?: 0L
-            val ownerBalance = accountBalanceMap[owner.accountId]?.balance ?: 0L
+        val accountIds =
+            listOf(statsData.project.accountId, statsData.owner.accountId) + statsData.adminUsers.map { it.accountId }
+        val accountBalanceMap = findAccountBalanceMap(accountIds)
 
-            val admins =
-                adminUsers.map { admin ->
-                    val adminBalance = accountBalanceMap[admin.accountId]?.balance ?: 0L
-                    AdminInfo(admin, adminBalance)
-                }
+        val projectBalance = accountBalanceMap[statsData.project.accountId]?.balance ?: 0L
+        val ownerBalance = accountBalanceMap[statsData.owner.accountId]?.balance ?: 0L
 
-            ProjectStatsResult(stats, project, projectBalance, owner, ownerBalance, admins)
-        }
+        val admins =
+            statsData.adminUsers.map { admin ->
+                val adminBalance = accountBalanceMap[admin.accountId]?.balance ?: 0L
+                AdminInfo(admin, adminBalance)
+            }
+
+        return ProjectStatsResult(
+            statsData.stats,
+            statsData.project,
+            projectBalance,
+            statsData.owner,
+            ownerBalance,
+            admins,
+        )
+    }
+
+    private data class ProjectRankingData(
+        val result: RankingQueryResult<ProjectRankingEntry>,
+        val projects: List<Project>,
+        val owners: List<User>,
+        val admins: List<User>,
+    )
+
+    private data class ProjectStatsData(
+        val project: Project,
+        val stats: IndividualStats,
+        val owner: User,
+        val adminUsers: List<User>,
+    )
+
+    private suspend fun findAccountBalanceMap(accountIds: List<AccountId>): Map<AccountId, Account> =
+        economicGateway.findAccountsByIds(accountIds.distinct()).associateBy { it.accountId }
 
     suspend fun getUserBalanceAt(
         userId: UserId,
         at: Instant,
-    ): Long =
-        unitOfWork.runInTransaction {
-            statsCacheRepository.getUserBalanceAt(userId, at)
-        } ?: throw NotFoundException("User not found")
+    ): Long {
+        val (accountId, balanceChange) =
+            unitOfWork.runInTransaction {
+                val user = userRepository.findById(userId) ?: throw NotFoundException("User not found")
+                val balanceChange = transactionRepository.getUserBalanceChangeAfter(userId, at)
+
+                user.accountId to balanceChange
+            }
+
+        val currentBalance = economicGateway.findAccountById(accountId)?.balance ?: throw NotFoundException("User not found")
+        return currentBalance - balanceChange.netChange
+    }
 
     suspend fun getProjectBalanceAt(
         projectId: ProjectId,
         at: Instant,
-    ): Long =
-        unitOfWork.runInTransaction {
-            statsCacheRepository.getProjectBalanceAt(projectId, at)
-        } ?: throw NotFoundException("Project not found")
+    ): Long {
+        val (accountId, balanceChange) =
+            unitOfWork.runInTransaction {
+                val project = projectRepository.findById(projectId) ?: throw NotFoundException("Project not found")
+                val balanceChange = transactionRepository.getProjectBalanceChangeAfter(projectId, at)
+
+                project.accountId to balanceChange
+            }
+
+        val currentBalance = economicGateway.findAccountById(accountId)?.balance ?: throw NotFoundException("Project not found")
+        return currentBalance - balanceChange.netChange
+    }
 }

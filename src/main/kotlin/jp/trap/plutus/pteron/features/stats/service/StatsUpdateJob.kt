@@ -1,13 +1,17 @@
 package jp.trap.plutus.pteron.features.stats.service
 
 import jp.trap.plutus.pteron.common.domain.UnitOfWork
+import jp.trap.plutus.pteron.common.domain.model.AccountId
 import jp.trap.plutus.pteron.common.domain.model.ProjectId
 import jp.trap.plutus.pteron.common.domain.model.UserId
 import jp.trap.plutus.pteron.features.account.domain.gateway.EconomicGateway
+import jp.trap.plutus.pteron.features.account.domain.model.Account
+import jp.trap.plutus.pteron.features.project.domain.model.Project
 import jp.trap.plutus.pteron.features.project.domain.repository.ProjectRepository
 import jp.trap.plutus.pteron.features.stats.domain.model.*
 import jp.trap.plutus.pteron.features.stats.domain.repository.StatsCacheRepository
 import jp.trap.plutus.pteron.features.transaction.domain.repository.TransactionRepository
+import jp.trap.plutus.pteron.features.user.domain.model.User
 import jp.trap.plutus.pteron.features.user.domain.repository.UserRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
@@ -17,6 +21,7 @@ import org.koin.core.annotation.Single
 import org.slf4j.LoggerFactory
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.hours
+import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.minutes
 
 @Single
@@ -32,7 +37,7 @@ class StatsUpdateJob(
 
     fun start(scope: CoroutineScope) {
         scope.launch {
-            delay(10_000)
+            delay(10_000.milliseconds)
 
             while (isActive) {
                 try {
@@ -49,17 +54,23 @@ class StatsUpdateJob(
         logger.info("Starting stats cache update...")
         val startTime = System.currentTimeMillis()
 
+        val users = unitOfWork.runInTransaction { userRepository.findAll() }
+        val projects = unitOfWork.runInTransaction { projectRepository.findAll() }
+        val accountIds = (users.map { it.accountId } + projects.map { it.accountId }).distinct()
+        val accountBalanceMap = economicGateway.findAccountsByIds(accountIds).associateBy { it.accountId }
+
         for (term in Term.entries) {
             try {
                 unitOfWork.runInTransaction {
-                    updateSystemStats(term)
-                    updateUsersAggregateStats(term)
-                    updateProjectsAggregateStats(term)
+                    updateSystemStats(term, users, projects, accountBalanceMap)
+                    updateUsersAggregateStats(term, users, accountBalanceMap)
+                    updateProjectsAggregateStats(term, projects, accountBalanceMap)
 
-                    val userRankingsCurrentTerm = calculateAllUserRankings(term)
-                    val userRankingsPreviousTerm = calculateAllUserRankings(term, previous = true)
-                    val projectRankingsCurrentTerm = calculateAllProjectRankings(term)
-                    val projectRankingsPreviousTerm = calculateAllProjectRankings(term, previous = true)
+                    val userRankingsCurrentTerm = calculateAllUserRankings(term, users, accountBalanceMap)
+                    val userRankingsPreviousTerm = calculateAllUserRankings(term, users, accountBalanceMap, previous = true)
+                    val projectRankingsCurrentTerm = calculateAllProjectRankings(term, projects, accountBalanceMap)
+                    val projectRankingsPreviousTerm =
+                        calculateAllProjectRankings(term, projects, accountBalanceMap, previous = true)
 
                     for (rankingType in RankingType.entries) {
                         updateUserRankings(term, rankingType, userRankingsCurrentTerm, userRankingsPreviousTerm)
@@ -80,17 +91,19 @@ class StatsUpdateJob(
         logger.info("Stats cache update completed in ${elapsed}ms")
     }
 
-    private suspend fun updateSystemStats(term: Term) {
+    private suspend fun updateSystemStats(
+        term: Term,
+        users: List<User>,
+        projects: List<Project>,
+        accountBalanceMap: Map<AccountId, Account>,
+    ) {
         val now = Clock.System.now()
         val since = now.minus(term.hours.hours)
 
-        val users = userRepository.findAll()
-        val projects = projectRepository.findAll()
-
-        val allAccountIds = users.map { it.accountId } + projects.map { it.accountId }
-        val accounts = economicGateway.findAccountsByIds(allAccountIds)
-
-        val currentBalance = accounts.sumOf { it.balance }
+        val currentBalance =
+            (users.map { it.accountId } + projects.map { it.accountId })
+                .distinct()
+                .sumOf { accountBalanceMap[it]?.balance ?: 0L }
 
         // 期間内の取引統計
         val transactionStats = transactionRepository.getStats(since)
@@ -117,14 +130,15 @@ class StatsUpdateJob(
         )
     }
 
-    private suspend fun updateUsersAggregateStats(term: Term) {
+    private suspend fun updateUsersAggregateStats(
+        term: Term,
+        users: List<User>,
+        accountBalanceMap: Map<AccountId, Account>,
+    ) {
         val now = Clock.System.now()
         val since = now.minus(term.hours.hours)
 
-        val users = userRepository.findAll()
-        val accounts = economicGateway.findAccountsByIds(users.map { it.accountId })
-
-        val currentBalance = accounts.sumOf { it.balance }
+        val currentBalance = users.sumOf { accountBalanceMap[it.accountId]?.balance ?: 0L }
         val transactionStats = transactionRepository.getUsersStats(since)
 
         val previousBalance = currentBalance - transactionStats.netChange
@@ -149,14 +163,15 @@ class StatsUpdateJob(
         )
     }
 
-    private suspend fun updateProjectsAggregateStats(term: Term) {
+    private suspend fun updateProjectsAggregateStats(
+        term: Term,
+        projects: List<Project>,
+        accountBalanceMap: Map<AccountId, Account>,
+    ) {
         val now = Clock.System.now()
         val since = now.minus(term.hours.hours)
 
-        val projects = projectRepository.findAll()
-        val accounts = economicGateway.findAccountsByIds(projects.map { it.accountId })
-
-        val currentBalance = accounts.sumOf { it.balance }
+        val currentBalance = projects.sumOf { accountBalanceMap[it.accountId]?.balance ?: 0L }
         val transactionStats = transactionRepository.getProjectsStats(since)
 
         val previousBalance = currentBalance - transactionStats.netChange
@@ -205,16 +220,14 @@ class StatsUpdateJob(
 
     private suspend fun calculateAllUserRankings(
         term: Term,
+        users: List<User>,
+        accountBalanceMap: Map<AccountId, Account>,
         previous: Boolean = false,
     ): List<UserStatsData> {
         val now = Clock.System.now()
         val offset = if (previous) term.hours.hours else 0.hours
         val since = now.minus(term.hours.hours + offset)
         val until = if (previous) now.minus(offset) else now
-
-        val users = userRepository.findAll()
-        val accounts = economicGateway.findAccountsByIds(users.map { it.accountId })
-        val accountBalanceMap = accounts.associateBy { it.accountId }
 
         return users.map { user ->
             val balanceNow = accountBalanceMap[user.accountId]?.balance ?: 0L
@@ -254,16 +267,14 @@ class StatsUpdateJob(
 
     private suspend fun calculateAllProjectRankings(
         term: Term,
+        projects: List<Project>,
+        accountBalanceMap: Map<AccountId, Account>,
         previous: Boolean = false,
     ): List<ProjectStatsData> {
         val now = Clock.System.now()
         val offset = if (previous) term.hours.hours else 0.hours
         val since = now.minus(term.hours.hours + offset)
         val until = if (previous) now.minus(offset) else now
-
-        val projects = projectRepository.findAll()
-        val accounts = economicGateway.findAccountsByIds(projects.map { it.accountId })
-        val accountBalanceMap = accounts.associateBy { it.accountId }
 
         return projects.map { project ->
             val balanceNow = accountBalanceMap[project.accountId]?.balance ?: 0L
