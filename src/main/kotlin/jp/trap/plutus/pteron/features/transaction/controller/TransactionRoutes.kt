@@ -125,24 +125,26 @@ private fun createTransactionDto(
     accountMap: Map<AccountId, Account>,
 ): TransactionDto {
     // userがnullの場合（SYSTEM取引など）
-    val userDto = transaction.userId?.let { userId ->
-        val user = userMap[userId]
-        user?.let { u ->
-            accountMap[u.accountId]?.let { account ->
-                createUserDto(u, account)
+    val userDto =
+        transaction.userId?.let { userId ->
+            val user = userMap[userId]
+            user?.let { u ->
+                accountMap[u.accountId]?.let { account ->
+                    createUserDto(u, account)
+                }
             }
         }
-    }
 
     // projectがnullの場合（SYSTEM取引など）
-    val projectDto = transaction.projectId?.let { projectId ->
-        val project = projectMap[projectId]
-        project?.let { p ->
-            accountMap[p.accountId]?.let { projectAccount ->
-                createProjectDto(p, projectAccount, userMap, accountMap)
+    val projectDto =
+        transaction.projectId?.let { projectId ->
+            val project = projectMap[projectId]
+            project?.let { p ->
+                accountMap[p.accountId]?.let { projectAccount ->
+                    createProjectDto(p, projectAccount, userMap, accountMap)
+                }
             }
         }
-    }
 
     return TransactionDto(
         id = transaction.id.value,

@@ -42,7 +42,7 @@ class UserService(
                 } catch (e: Exception) {
                     throw IllegalStateException("Failed to create user: $name", e)
                 }
-                
+
                 // Welcome Bonus
                 systemAccountService.sendWelcomeBonusToUser(newUser.id, newUser.accountId)
             }

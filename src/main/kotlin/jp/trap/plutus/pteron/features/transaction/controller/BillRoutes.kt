@@ -24,7 +24,11 @@ import jp.trap.plutus.pteron.openapi.internal.models.User as UserDto
  * リダイレクトURLにクエリパラメータを追加する
  * 既存のクエリパラメータがある場合は &、ない場合は ? で追加
  */
-private fun buildRedirectUrl(baseUrl: String, billId: BillId, status: String): String {
+private fun buildRedirectUrl(
+    baseUrl: String,
+    billId: BillId,
+    status: String,
+): String {
     val separator = if (baseUrl.contains("?")) "&" else "?"
     return "${baseUrl}${separator}billId=${billId.value}&status=$status"
 }
@@ -73,10 +77,11 @@ fun Route.billRoutes() {
             val result = billService.approveBill(billId, currentUser.id)
 
             // 成功時: successUrl → cancelUrl → project.url → "/"
-            val baseUrl = result.bill.successUrl
-                ?: result.bill.cancelUrl
-                ?: projectUrl
-                ?: "/"
+            val baseUrl =
+                result.bill.successUrl
+                    ?: result.bill.cancelUrl
+                    ?: projectUrl
+                    ?: "/"
             val redirectUrl = buildRedirectUrl(baseUrl, billId, "success")
             call.respond(ApproveBill200Response(redirectUrl = redirectUrl))
         } catch (e: ConflictException) {
@@ -84,10 +89,11 @@ fun Route.billRoutes() {
             throw e
         } catch (e: Exception) {
             // 決済失敗時: cancelUrl → successUrl → project.url → "/"
-            val baseUrl = bill.cancelUrl
-                ?: bill.successUrl
-                ?: projectUrl
-                ?: "/"
+            val baseUrl =
+                bill.cancelUrl
+                    ?: bill.successUrl
+                    ?: projectUrl
+                    ?: "/"
             val redirectUrl = buildRedirectUrl(baseUrl, billId, "failed")
             call.respond(ApproveBill200Response(redirectUrl = redirectUrl))
         }
@@ -105,10 +111,11 @@ fun Route.billRoutes() {
         val projectUrl = project.url?.value
 
         // 拒否時: cancelUrl → successUrl → project.url → "/"
-        val baseUrl = bill.cancelUrl
-            ?: bill.successUrl
-            ?: projectUrl
-            ?: "/"
+        val baseUrl =
+            bill.cancelUrl
+                ?: bill.successUrl
+                ?: projectUrl
+                ?: "/"
         val redirectUrl = buildRedirectUrl(baseUrl, billId, "declined")
 
         call.respond(ApproveBill200Response(redirectUrl = redirectUrl))

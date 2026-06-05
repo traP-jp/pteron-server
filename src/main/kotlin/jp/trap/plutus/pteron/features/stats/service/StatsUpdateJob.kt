@@ -67,7 +67,7 @@ class StatsUpdateJob(
                             term,
                             rankingType,
                             projectRankingsCurrentTerm,
-                            projectRankingsPreviousTerm
+                            projectRankingsPreviousTerm,
                         )
                     }
                 }
@@ -222,12 +222,13 @@ class StatsUpdateJob(
 
             // 期間終了時点の残高を計算
             // previous=true の場合: until時点の残高 = 今の残高 - (untilから今までの変化)
-            val balanceAtEnd = if (previous) {
-                val changesAfterUntil = transactionRepository.getUserBalanceChangeAfter(user.id, until)
-                balanceNow - changesAfterUntil.netChange
-            } else {
-                balanceNow
-            }
+            val balanceAtEnd =
+                if (previous) {
+                    val changesAfterUntil = transactionRepository.getUserBalanceChangeAfter(user.id, until)
+                    balanceNow - changesAfterUntil.netChange
+                } else {
+                    balanceNow
+                }
 
             // 期間開始時点の残高 = 期間終了時点の残高 - 期間中の変化
             val balanceAtStart = balanceAtEnd - stats.netChange
@@ -269,12 +270,13 @@ class StatsUpdateJob(
             val stats = transactionRepository.getProjectStats(project.id, since, until)
 
             // 期間終了時点の残高を計算
-            val balanceAtEnd = if (previous) {
-                val changesAfterUntil = transactionRepository.getProjectBalanceChangeAfter(project.id, until)
-                balanceNow - changesAfterUntil.netChange
-            } else {
-                balanceNow
-            }
+            val balanceAtEnd =
+                if (previous) {
+                    val changesAfterUntil = transactionRepository.getProjectBalanceChangeAfter(project.id, until)
+                    balanceNow - changesAfterUntil.netChange
+                } else {
+                    balanceNow
+                }
 
             // 期間開始時点の残高 = 期間終了時点の残高 - 期間中の変化
             val balanceAtStart = balanceAtEnd - stats.netChange

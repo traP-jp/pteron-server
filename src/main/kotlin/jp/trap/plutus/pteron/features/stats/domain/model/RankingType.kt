@@ -3,7 +3,9 @@ package jp.trap.plutus.pteron.features.stats.domain.model
 /**
  * ランキングの種別を表すenum
  */
-enum class RankingType(val key: String) {
+enum class RankingType(
+    val key: String,
+) {
     BALANCE("balance"),
     DIFFERENCE("difference"),
     IN("in"),

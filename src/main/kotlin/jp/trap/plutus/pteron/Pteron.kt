@@ -81,7 +81,6 @@ fun Application.module() {
 
     statsUpdateJob.start(this)
 
-
     val userService by inject<UserService>()
 
     install(StatusPages) {

@@ -78,10 +78,10 @@ class ProjectService(
                     url = url,
                 )
             projectRepository.save(project)
-            
+
             // Welcome Bonus
             systemAccountService.sendWelcomeBonusToProject(project.id, project.accountId)
-            
+
             project
         }
     }

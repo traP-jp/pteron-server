@@ -74,7 +74,7 @@ class DatabaseBillRepository : BillRepository {
                                 (
                                     (BillTable.createdAt eq cursorCreatedAtKt) and
                                         (BillTable.id less cursorIdJava)
-                                    ),
+                                ),
                         )
                     }
                     statusFilter?.let { conditions.add(BillTable.status eq it.name) }
