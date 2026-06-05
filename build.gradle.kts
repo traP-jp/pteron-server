@@ -183,16 +183,8 @@ tasks {
         dependsOn(downloadSpecs)
         generatorName.set("kotlin-server")
         library.set("ktor")
-        inputSpec.set(
-            specsDir.map {
-                it
-                    .file("openapi/internal.yaml")
-                    .asFile
-                    .toURI()
-                    .toString()
-            },
-        )
-        outputDir.set(generatedOpenApiInternalDir.map { it.asFile.path })
+        inputSpec.set(specsDir.map { it.file("openapi/internal.yaml") })
+        outputDir.set(generatedOpenApiInternalDir)
         packageName.set("jp.trap.plutus.pteron.openapi.internal")
         configOptions.set(
             mapOf(
@@ -215,16 +207,8 @@ tasks {
         dependsOn(downloadSpecs)
         generatorName.set("kotlin-server")
         library.set("ktor")
-        inputSpec.set(
-            specsDir.map {
-                it
-                    .file("openapi/pteron.yaml")
-                    .asFile
-                    .toURI()
-                    .toString()
-            },
-        )
-        outputDir.set(generatedOpenApiPublicDir.map { it.asFile.path })
+        inputSpec.set(specsDir.map { it.file("openapi/pteron.yaml") })
+        outputDir.set(generatedOpenApiPublicDir)
         packageName.set("jp.trap.plutus.pteron.openapi.public")
         configOptions.set(
             mapOf(
@@ -261,6 +245,10 @@ tasks {
         dependsOn(generateCode)
     }
 
+    matching { it.name == "processProtoResources" }.configureEach {
+        dependsOn(downloadSpecs)
+    }
+
     test {
         useJUnitPlatform()
     }
@@ -277,7 +265,7 @@ kotlin {
         freeCompilerArgs.add("-opt-in=kotlin.uuid.ExperimentalUuidApi")
         freeCompilerArgs.add("-opt-in=io.ktor.utils.io.InternalAPI")
     }
-    jvmToolchain(24)
+    jvmToolchain(25)
 }
 
 configure<org.jlleitschuh.gradle.ktlint.KtlintExtension> {

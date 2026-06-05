@@ -1,6 +1,7 @@
 package jp.trap.plutus.pteron.features.stats.infrastructure
 
 import org.jetbrains.exposed.v1.core.Table
+import org.jetbrains.exposed.v1.core.java.javaUUID
 import org.jetbrains.exposed.v1.datetime.timestamp
 
 /**
@@ -56,7 +57,7 @@ object StatsCacheProjectsAggregateTable : Table("stats_cache_projects_aggregate"
 object StatsCacheUserRankingsTable : Table("stats_cache_user_rankings") {
     val term = varchar("term", 16)
     val rankingType = varchar("ranking_type", 16)
-    val userId = uuid("user_id")
+    val userId = javaUUID("user_id")
     val rank = long("rank")
     val value = long("value")
     val difference = long("difference")
@@ -70,7 +71,7 @@ object StatsCacheUserRankingsTable : Table("stats_cache_user_rankings") {
 object StatsCacheProjectRankingsTable : Table("stats_cache_project_rankings") {
     val term = varchar("term", 16)
     val rankingType = varchar("ranking_type", 16)
-    val projectId = uuid("project_id")
+    val projectId = javaUUID("project_id")
     val rank = long("rank")
     val value = long("value")
     val difference = long("difference")

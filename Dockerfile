@@ -1,4 +1,4 @@
-FROM eclipse-temurin:24-jdk AS builder
+FROM eclipse-temurin:25-jdk AS builder
 
 WORKDIR /app
 
@@ -19,7 +19,7 @@ COPY src src
 # Shadow JARをビルド
 RUN ./gradlew shadowJar --no-daemon
 
-FROM eclipse-temurin:24-jre
+FROM eclipse-temurin:25-jre
 
 # Labels
 LABEL org.opencontainers.image.source="https://github.com/traP-jp/pteron-server"
