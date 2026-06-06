@@ -1,46 +1,30 @@
-FROM eclipse-temurin:25-jdk AS builder
+FROM golang:1.26-bookworm AS builder
 
 WORKDIR /app
 
-# Gradle Wrapperと設定ファイルを先にコピー
-COPY gradle gradle
-COPY gradlew gradlew
-COPY gradlew.bat gradlew.bat
-COPY build.gradle.kts build.gradle.kts
-COPY settings.gradle.kts settings.gradle.kts
-COPY gradle.properties gradle.properties
+COPY go.mod go.sum ./
+RUN go mod download
 
-# 依存関係のダウンロード
-RUN chmod +x gradlew && ./gradlew dependencies --no-daemon
+COPY cmd cmd
+COPY internal internal
 
-# ソースコードをコピーしてビルド
-COPY src src
+RUN go test ./... && CGO_ENABLED=0 GOOS=linux go build -o /out/pteron ./cmd/pteron
 
-# Shadow JARをビルド
-RUN ./gradlew shadowJar --no-daemon
-
-FROM eclipse-temurin:25-jre
+FROM gcr.io/distroless/static-debian12
 
 # Labels
 LABEL org.opencontainers.image.source="https://github.com/traP-jp/pteron-server"
 LABEL org.opencontainers.image.description="Pteron Server"
 
-# Create non-root user
-RUN groupadd -r pteron && useradd -r -g pteron pteron
-
 WORKDIR /app
 
-# Copy Pteron JAR from builder stage
-COPY --from=builder /app/build/libs/*-all.jar /app/pteron.jar
+COPY --from=builder /out/pteron /app/pteron
+COPY migrations /app/migrations
 
-# Change ownership
-RUN chown -R pteron:pteron /app
-
-# Switch to non-root user
-USER pteron
+USER nonroot:nonroot
 
 # Pteron server port
 EXPOSE 8080
 
 # Default command
-CMD ["java", "-jar", "/app/pteron.jar"]
+CMD ["/app/pteron"]

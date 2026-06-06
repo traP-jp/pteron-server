@@ -1,0 +1,1353 @@
+openapi: 3.1.0
+info:
+  title: Pteron Internal API
+  version: 1.0.0
+  description: |
+    ダッシュボードおよびフロントエンド向けの内部API。
+servers:
+  - url: /api/internal
+components:
+  securitySchemes:
+    ForwardAuth:
+      type: apiKey
+      in: header
+      name: X-Forwarded-User
+      description: プロキシが付与するユーザーIDヘッダー
+
+  schemas:
+    User:
+      type: object
+      description: ユーザー
+      required:
+        - id
+        - name
+        - balance
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          description: traP ID
+        balance:
+          type: integer
+          format: int64
+          description: 現在の残高
+
+    Project:
+      type: object
+      description: プロジェクト
+      required:
+        - id
+        - name
+        - owner
+        - admins
+        - balance
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        url:
+          type: string
+          format: uri
+        owner:
+          $ref: '#/components/schemas/User'
+        admins:
+          type: array
+          items:
+            $ref: '#/components/schemas/User'
+          description: プロジェクト管理者のユーザー情報の配列
+        balance:
+          type: integer
+          format: int64
+
+    Transaction:
+      type: object
+      description: 完了した取引
+      required:
+        - id
+        - type
+        - amount
+        - createdAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        type:
+          type: string
+          enum: [TRANSFER, BILL_PAYMENT, SYSTEM]
+          description: |
+            取引の種類
+            - TRANSFER: プロジェクトからユーザーへの送金 (Project -> User)
+            - BILL_PAYMENT: プロジェクトへの請求の支払い (User -> Project)
+            - SYSTEM: システムからプロジェクトorユーザーへの支払い
+        amount:
+          type: integer
+          format: int64
+        project:
+          $ref: '#/components/schemas/Project'
+        user:
+          $ref: '#/components/schemas/User'
+        description:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    Bill:
+      type: object
+      description: 請求
+      required:
+        - id
+        - amount
+        - user
+        - project
+        - status
+        - createdAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        amount:
+          type: integer
+          format: int64
+        user:
+          $ref: '#/components/schemas/User'
+          description: 請求対象のユーザーID
+        description:
+          type: string
+        project:
+          $ref: '#/components/schemas/Project'
+        status:
+          type: string
+          enum: [PENDING, COMPLETED, REJECTED, FAILED]
+        createdAt:
+          type: string
+          format: date-time
+
+    APIClient:
+      type: object
+      description: APIクライアント
+      required:
+        - clientId
+        - createdAt
+      properties:
+        clientId:
+          type: string
+        clientSecret:
+          type: string
+          description: 作成時のみ返却される
+        createdAt:
+          type: string
+          format: date-time
+
+security:
+  - ForwardAuth: []
+
+paths:
+  # --- Me (Personal Context) ---
+  /me:
+    get:
+      tags: [Me]
+      operationId: getCurrentUser
+      summary: 自分の情報を取得
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+
+  /me/bills/{billId}:
+    get:
+      tags: [Me]
+      operationId: getBill
+      summary: 請求の詳細を取得
+      parameters:
+        - name: billId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Bill'
+
+  /me/bills/{billId}/approve:
+    post:
+      tags: [Me]
+      operationId: approveBill
+      summary: 請求を承認して支払いを実行する
+      description: 成功した場合、プロジェクトが指定したリダイレクトURLを返す
+      parameters:
+        - name: billId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 支払い完了
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - redirectUrl
+                properties:
+                  redirectUrl:
+                    type: string
+                    format: uri
+        '409':
+          description: 既に処理済み
+
+  /me/bills/{billId}/decline:
+    post:
+      tags: [Me]
+      operationId: declineBill
+      summary: 請求を拒否する
+      description: 成功した場合、プロジェクトが指定したリダイレクトURLを返す
+      parameters:
+        - name: billId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: 拒否完了
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - redirectUrl
+                properties:
+                  redirectUrl:
+                    type: string
+                    format: uri
+        '409':
+          description: 既に処理済み
+
+
+  # --- Transactions ---
+  /transactions:
+    get:
+      tags: [Transactions]
+      operationId: getTransactions
+      summary: 経済圏全体の取引履歴を取得
+      parameters:
+        - name: term
+          in: query
+          schema:
+            type: string
+            enum:
+              - 24hours
+              - 7days
+              - 30days
+              - 365days
+            description: これが指定されている場合は、limitやcursorを無視し、全件返す
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: cursor
+          in: query
+          schema:
+            type: string
+            description: |
+              続きを取得するためのカーソル
+              前回のレスポンスの nextCursor に含まれる値を指定します。
+              初回リクエスト時は未指定とします。
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Transaction'
+                  nextCursor:
+                    type: string
+                    description: 次のページを取得するためのカーソル
+
+  /transactions/users/{userId}:
+    get:
+      tags: [Transactions]
+      operationId: getUserTransactions
+      summary: 特定のユーザーの取引履歴を取得
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: term
+          in: query
+          schema:
+            type: string
+            enum:
+              - 24hours
+              - 7days
+              - 30days
+              - 365days
+            description: これが指定されている場合は、limitやcursorを無視し、全件返す
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: cursor
+          in: query
+          schema:
+            type: string
+            description: |
+              続きを取得するためのカーソル
+              前回のレスポンスの nextCursor に含まれる値を指定します。
+              初回リクエスト時は未指定とします。
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Transaction'
+                  nextCursor:
+                    type: string
+                    description: 次のページを取得するためのカーソル
+
+  /transactions/projects/{projectId}:
+    get:
+      tags: [Transactions]
+      operationId: getProjectTransactions
+      summary: 特定のプロジェクトの取引履歴を取得
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: term
+          in: query
+          schema:
+            type: string
+            enum:
+              - 24hours
+              - 7days
+              - 30days
+              - 365days
+            description: これが指定されている場合は、limitやcursorを無視し、全件返す
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: cursor
+          in: query
+          schema:
+            type: string
+            description: |
+              続きを取得するためのカーソル
+              前回のレスポンスの nextCursor に含まれる値を指定します。
+              初回リクエスト時は未指定とします。
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Transaction'
+                  nextCursor:
+                    type: string
+                    description: 次のページを取得するためのカーソル
+
+  # --- Stats ---
+  /stats:
+    get:
+      tags: [Stats]
+      operationId: getSystemStats
+      summary: 経済圏全体の統計情報を取得
+      parameters:
+        - name: term
+          required: true
+          in: query
+          schema:
+            type: string
+            enum:
+              - 24hours
+              - 7days
+              - 30days
+              - 365days
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - balance
+                  - difference
+                  - count
+                  - total
+                  - ratio
+                properties:
+                  balance: # 市場にあるお金の合計
+                    type: integer
+                    format: int64
+                  difference: # 市場にあるお金の期間前との差
+                    type: integer
+                    format: int64
+                  count: # 取引件数
+                    type: integer
+                    format: int64
+                  total: # 取引総額
+                    type: integer
+                    format: int64
+                  ratio: # 期間前のbalanceから何%増えた・減ったか
+                    type: integer
+                    format: int64
+
+  /stats/users:
+    get:
+      tags: [Stats]
+      operationId: getUsersStats
+      summary: ユーザー関連の統計情報を取得
+      parameters:
+        - name: term
+          required: true
+          in: query
+          schema:
+            type: string
+            enum:
+              - 24hours
+              - 7days
+              - 30days
+              - 365days
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - number
+                  - balance
+                  - difference
+                  - count
+                  - total
+                  - ratio
+                properties:
+                  number: # 人数
+                    type: integer
+                    format: int64
+                  balance: # ユーザーが持つお金の合計
+                    type: integer
+                    format: int64
+                  difference: # ユーザーが持つお金の期間前との差
+                    type: integer
+                    format: int64
+                  count: # 取引件数
+                    type: integer
+                    format: int64
+                  total: # 取引総額
+                    type: integer
+                    format: int64
+                  ratio: # 期間前のbalanceから何%増えた・減ったか
+                    type: integer
+                    format: int64
+
+  /stats/projects:
+    get:
+      tags: [Stats]
+      operationId: getProjectsStats
+      summary: プロジェクト関連の統計情報を取得
+      parameters:
+        - name: term
+          required: true
+          in: query
+          schema:
+            type: string
+            enum:
+              - 24hours
+              - 7days
+              - 30days
+              - 365days
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - number
+                  - balance
+                  - difference
+                  - count
+                  - total
+                  - ratio
+                properties:
+                  number: # 人数
+                    type: integer
+                    format: int64
+                  balance: # プロジェクトが持つお金の合計
+                    type: integer
+                    format: int64
+                  difference: # プロジェクトが持つお金の期間前との差
+                    type: integer
+                    format: int64
+                  count: # 取引件数
+                    type: integer
+                    format: int64
+                  total: # 取引総額
+                    type: integer
+                    format: int64
+                  ratio: # 期間前のbalanceから何%増えた・減ったか
+                    type: integer
+                    format: int64
+
+  /stats/users/{rankingName}:
+    get:
+      tags: [Stats]
+      operationId: getUserRankings
+      summary: ユーザー関連のランキングを取得
+      parameters:
+        - name: rankingName
+          in: path
+          required: true
+          schema:
+            type: string
+            enum:
+              - balance # 終了時点での残高
+              - difference # 期間前と現在の差
+              - in # 入金総額
+              - out # 出金総額
+              - count # 取引件数
+              - total # 取引総額(入金と送金の合計)
+              - ratio # 期間前の残高から何%増えた・減ったか
+        - name: order
+          in: query
+          schema:
+            type: string
+            enum:
+              - desc
+              - asc
+            description: デフォルトはdesc(降順)
+        - name: term
+          required: true
+          in: query
+          schema:
+            type: string
+            enum:
+              - 24hours
+              - 7days
+              - 30days
+              - 365days
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: cursor
+          in: query
+          schema:
+            type: string
+            description: |
+              続きを取得するためのカーソル
+              前回のレスポンスの nextCursor に含まれる値を指定します。
+              初回リクエスト時は未指定とします。
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      required: [rank, value, difference, user]
+                      properties:
+                        rank:
+                          type: integer
+                          format: int64
+                        value:
+                          type: integer
+                          format: int64
+                        difference:
+                          type: integer
+                          format: int64
+                          description: 24hoursなら、前の24hoursでの順位との比較
+                        user:
+                          $ref: '#/components/schemas/User'
+                  nextCursor:
+                    type: string
+                    description: 次のページを取得するためのカーソル
+
+  /stats/projects/{projectName}:
+    get:
+      tags: [Stats]
+      operationId: getProjectRankings
+      summary: プロジェクト関連のランキングを取得
+      parameters:
+        - name: projectName
+          in: path
+          required: true
+          schema:
+            type: string
+            enum:
+              - balance # 終了時点での残高
+              - difference # 期間前と現在の差
+              - in # 入金総額
+              - out # 出金総額
+              - count # 取引件数
+              - total # 取引総額(入金と送金の合計)
+              - ratio # 期間前の残高から何%増えた・減ったか
+        - name: order
+          in: query
+          schema:
+            type: string
+            enum:
+              - desc
+              - asc
+            description: デフォルトはdesc(降順)
+        - name: term
+          required: true
+          in: query
+          schema:
+            type: string
+            enum:
+              - 24hours
+              - 7days
+              - 30days
+              - 365days
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: cursor
+          in: query
+          schema:
+            type: string
+            description: |
+              続きを取得するためのカーソル
+              前回のレスポンスの nextCursor に含まれる値を指定します。
+              初回リクエスト時は未指定とします。
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      required: [rank, value, difference, project]
+                      properties:
+                        rank:
+                          type: integer
+                          format: int64
+                        value:
+                          type: integer
+                          format: int64
+                        difference:
+                          type: integer
+                          format: int64
+                          description: 24hoursなら、前の24hoursでの順位との比較
+                        project:
+                          $ref: '#/components/schemas/Project'
+                  nextCursor:
+                    type: string
+                    description: 次のページを取得するためのカーソル
+
+  # --- Users (Public Context) ---
+  /users:
+    get:
+      tags: [Users]
+      operationId: getUsers
+      summary: 全ユーザー一覧を取得
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/User'
+                  nextCursor:
+                    type: string
+                    description: 次のページを取得するためのカーソル (存在しない場合は未設定)
+
+  /users/{userId}:
+    get:
+        tags: [Users]
+        operationId: getUser
+        parameters:
+          - name: userId
+            in: path
+            required: true
+            schema:
+              type: string
+        summary: ユーザー詳細
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  $ref: '#/components/schemas/User'
+
+  /users/{userId}/balance:
+    get:
+        tags: [Users]
+        operationId: getUserBalance
+        parameters:
+          - name: userId
+            in: path
+            required: true
+            schema:
+              type: string
+          - name: date
+            in: query
+            schema:
+              type: string
+              format: date-time
+              description: 無い場合は現在時刻
+        summary: 特定日時でのユーザーの残高
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  type: object
+                  required: [balance]
+                  properties:
+                    balance:
+                      type: integer
+                      format: int64
+
+  /users/{userId}/stats:
+    get:
+        tags: [Users]
+        operationId: getUserStats
+        parameters:
+          - name: userId
+            in: path
+            required: true
+            schema:
+              type: string
+          - name: term
+            required: true
+            in: query
+            schema:
+              type: string
+              enum:
+                - 24hours
+                - 7days
+                - 30days
+                - 365days
+          - name: order
+            in: query
+            schema:
+              type: string
+              enum:
+                - desc
+                - asc
+        summary: 特定のユーザーのランキング順位一覧
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  type: object
+                  required:
+                    - balance
+                    - difference
+                    - in
+                    - out
+                    - count
+                    - total
+                    - ratio
+                  properties:
+                    balance: # 終了時点での残高
+                      type: object
+                      required: [rank, value, difference, user]
+                      properties:
+                        rank:
+                          type: integer
+                          format: int64
+                        value:
+                          type: integer
+                          format: int64
+                        difference:
+                          type: integer
+                          format: int64
+                          description: 24hoursなら、前の24hoursでの順位との比較
+                        user:
+                          $ref: '#/components/schemas/User'
+                    difference: # 期間前と現在の差
+                      type: object
+                      required: [rank, value, difference, user]
+                      properties:
+                        rank:
+                          type: integer
+                          format: int64
+                        value:
+                          type: integer
+                          format: int64
+                        difference:
+                          type: integer
+                          format: int64
+                          description: 24hoursなら、前の24hoursでの順位との比較
+                        user:
+                          $ref: '#/components/schemas/User'
+                    in: # 入金総額
+                      type: object
+                      required: [rank, value, difference, user]
+                      properties:
+                        rank:
+                          type: integer
+                          format: int64
+                        value:
+                          type: integer
+                          format: int64
+                        difference:
+                          type: integer
+                          format: int64
+                          description: 24hoursなら、前の24hoursでの順位との比較
+                        user:
+                          $ref: '#/components/schemas/User'
+                    out: # 出金総額
+                      type: object
+                      required: [rank, value, difference, user]
+                      properties:
+                        rank:
+                          type: integer
+                          format: int64
+                        value:
+                          type: integer
+                          format: int64
+                        difference:
+                          type: integer
+                          format: int64
+                          description: 24hoursなら、前の24hoursでの順位との比較
+                        user:
+                          $ref: '#/components/schemas/User'
+                    count: # 取引件数
+                      type: object
+                      required: [rank, value, difference, user]
+                      properties:
+                        rank:
+                          type: integer
+                          format: int64
+                        value:
+                          type: integer
+                          format: int64
+                        difference:
+                          type: integer
+                          format: int64
+                          description: 24hoursなら、前の24hoursでの順位との比較
+                        user:
+                          $ref: '#/components/schemas/User'
+                    total: # 取引総額(入金と送金の合計)
+                      type: object
+                      required: [rank, value, difference, user]
+                      properties:
+                        rank:
+                          type: integer
+                          format: int64
+                        value:
+                          type: integer
+                          format: int64
+                        difference:
+                          type: integer
+                          format: int64
+                          description: 24hoursなら、前の24hoursでの順位との比較
+                        user:
+                          $ref: '#/components/schemas/User'
+                    ratio: # 期間前の残高から何%増えた・減ったか
+                      type: object
+                      required: [rank, value, difference, user]
+                      properties:
+                        rank:
+                          type: integer
+                          format: int64
+                        value:
+                          type: integer
+                          format: int64
+                        difference:
+                          type: integer
+                          format: int64
+                          description: 24hoursなら、前の24hoursでの順位との比較
+                        user:
+                          $ref: '#/components/schemas/User'
+
+  /users/{userId}/projects:
+    get:
+      tags: [Users]
+      operationId: getUserProjects
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+      summary: 指定したユーザーがオーナーまたは管理者のプロジェクト一覧
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Project'
+
+  # --- Projects (Admin Context) ---
+  /projects:
+    get:
+      tags: [Projects]
+      operationId: getProjects
+      summary: 全プロジェクト一覧を取得
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Project'
+                  nextCursor:
+                    type: string
+                    description: 次のページを取得するためのカーソル
+    post:
+      tags: [Projects]
+      operationId: createProject
+      summary: プロジェクトを新規作成
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+                  minLength: 1
+                url:
+                  type: string
+                  format: uri
+      responses:
+        '201':
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+
+  /projects/{projectId}:
+    get:
+      tags: [Projects]
+      operationId: getProject
+      summary: プロジェクト詳細
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+    put:
+      tags: [Projects]
+      operationId: updateProject
+      summary: プロジェクトの情報を更新
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [url]
+              properties:
+                url:
+                  type: string
+                  format: uri
+      responses:
+        '201':
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+
+  /projects/{projectId}/balance:
+    get:
+        tags: [Projects]
+        operationId: getProjectBalance
+        parameters:
+          - name: projectId
+            in: path
+            required: true
+            schema:
+              type: string
+          - name: date
+            in: query
+            schema:
+              type: string
+              format: date-time
+              description: 無い場合は現在時刻
+        summary: 特定日時でのプロジェクトの残高
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  type: object
+                  required: [balance]
+                  properties:
+                    balance:
+                      type: integer
+                      format: int64
+
+  /projects/{projectId}/stats:
+    get:
+        tags: [Projects]
+        operationId: getProjectStats
+        parameters:
+          - name: projectId
+            in: path
+            required: true
+            schema:
+              type: string
+          - name: term
+            required: true
+            in: query
+            schema:
+              type: string
+              enum:
+                - 24hours
+                - 7days
+                - 30days
+                - 365days
+          - name: order
+            in: query
+            schema:
+              type: string
+              enum:
+                - desc
+                - asc
+        summary: 特定のプロジェクトのランキング順位一覧
+        responses:
+          '200':
+            description: OK
+            content:
+              application/json:
+                schema:
+                  type: object
+                  required:
+                    - balance
+                    - difference
+                    - in
+                    - out
+                    - count
+                    - total
+                    - ratio
+                  properties:
+                    balance: # 終了時点での残高
+                      type: object
+                      required: [rank, value, difference, project]
+                      properties:
+                        rank:
+                          type: integer
+                          format: int64
+                        value:
+                          type: integer
+                          format: int64
+                        difference:
+                          type: integer
+                          format: int64
+                          description: 24hoursなら、前の24hoursでの順位との比較
+                        project:
+                          $ref: '#/components/schemas/Project'
+                    difference: # 期間前と現在の差
+                      type: object
+                      required: [rank, value, difference, project]
+                      properties:
+                        rank:
+                          type: integer
+                          format: int64
+                        value:
+                          type: integer
+                          format: int64
+                        difference:
+                          type: integer
+                          format: int64
+                          description: 24hoursなら、前の24hoursでの順位との比較
+                        project:
+                          $ref: '#/components/schemas/Project'
+                    in: # 入金総額
+                      type: object
+                      required: [rank, value, difference, project]
+                      properties:
+                        rank:
+                          type: integer
+                          format: int64
+                        value:
+                          type: integer
+                          format: int64
+                        difference:
+                          type: integer
+                          format: int64
+                          description: 24hoursなら、前の24hoursでの順位との比較
+                        project:
+                          $ref: '#/components/schemas/Project'
+                    out: # 出金総額
+                      type: object
+                      required: [rank, value, difference, project]
+                      properties:
+                        rank:
+                          type: integer
+                          format: int64
+                        value:
+                          type: integer
+                          format: int64
+                        difference:
+                          type: integer
+                          format: int64
+                          description: 24hoursなら、前の24hoursでの順位との比較
+                        project:
+                          $ref: '#/components/schemas/Project'
+                    count: # 取引件数
+                      type: object
+                      required: [rank, value, difference, project]
+                      properties:
+                        rank:
+                          type: integer
+                          format: int64
+                        value:
+                          type: integer
+                          format: int64
+                        difference:
+                          type: integer
+                          format: int64
+                          description: 24hoursなら、前の24hoursでの順位との比較
+                        project:
+                          $ref: '#/components/schemas/Project'
+                    total: # 取引総額(入金と送金の合計)
+                      type: object
+                      required: [rank, value, difference, project]
+                      properties:
+                        rank:
+                          type: integer
+                          format: int64
+                        value:
+                          type: integer
+                          format: int64
+                        difference:
+                          type: integer
+                          format: int64
+                          description: 24hoursなら、前の24hoursでの順位との比較
+                        project:
+                          $ref: '#/components/schemas/Project'
+                    ratio: # 期間前の残高から何%増えた・減ったか
+                      type: object
+                      required: [rank, value, difference, project]
+                      properties:
+                        rank:
+                          type: integer
+                          format: int64
+                        value:
+                          type: integer
+                          format: int64
+                        difference:
+                          type: integer
+                          format: int64
+                          description: 24hoursなら、前の24hoursでの順位との比較
+                        project:
+                          $ref: '#/components/schemas/Project'
+
+  /projects/{projectId}/admins:
+    get:
+      tags: [Projects]
+      operationId: getProjectAdmins
+      summary: プロジェクト管理者一覧を取得
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/User'
+    post:
+      tags: [Projects]
+      operationId: addProjectAdmin
+      summary: プロジェクト管理者を追加
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [userId]
+              properties:
+                userId:
+                  type: string
+      responses:
+        '204':
+          description: Added
+    delete:
+      tags: [Projects]
+      operationId: removeProjectAdmin
+      summary: プロジェクト管理者を削除
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [userId]
+              properties:
+                userId:
+                  type: string
+      responses:
+        '204':
+          description: Deleted
+
+  /projects/{projectId}/clients:
+    get:
+      tags: [Projects]
+      operationId: getProjectApiClients
+      summary: APIクライアント一覧
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/APIClient'
+    post:
+      tags: [Projects]
+      operationId: createProjectApiClient
+      summary: APIクライアントを新規発行
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '201':
+          description: Created (Secretはここでしか表示しない)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/APIClient'
+
+  /projects/{projectId}/clients/{clientId}:
+    delete:
+      tags: [Projects]
+      operationId: deleteProjectApiClient
+      summary: APIクライアントを削除（無効化）
+      parameters:
+        - name: projectId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: clientId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Deleted

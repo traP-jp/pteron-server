@@ -1,0 +1,433 @@
+openapi: 3.1.0
+info:
+  title: Pteron Public API
+  version: 1.0.0
+  description: |
+    プロジェクト開発者向けの外部公開API。
+    アクセストークンによるBearer認証が必要。
+servers:
+  - url: /api/v1
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    Project:
+      type: object
+      required:
+        - id
+        - name
+        - balance
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        balance:
+          type: integer
+          format: int64
+
+    Transaction:
+      type: object
+      required:
+        - id
+        - type
+        - amount
+        - createdAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        amount:
+          type: integer
+          format: int64
+        type:
+          type: string
+          enum: [TRANSFER, BILL_PAYMENT, SYSTEM]
+          description: |
+            取引の種類
+            - TRANSFER: プロジェクトからユーザーへの送金 (Project -> User)
+            - BILL_PAYMENT: プロジェクトへの請求の支払い (User -> Project)
+            - SYSTEM: システムからプロジェクトorユーザーへの支払い
+        userId:
+          type: string
+          format: uuid
+          description: 取引相手のユーザーID (UUID)
+        userName:
+          type: string
+          description: 取引相手のユーザー名 (traP ID)
+        projectId:
+          type: string
+          format: uuid
+        description:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+
+    Bill:
+      type: object
+      required:
+        - id
+        - amount
+        - userId
+        - status
+        - createdAt
+      properties:
+        id:
+          type: string
+          format: uuid
+        amount:
+          type: integer
+          format: int64
+        userId:
+          type: string
+          format: uuid
+          description: 請求対象のユーザーID (UUID)
+        userName:
+          type: string
+          description: 請求対象のユーザー名 (traP ID)
+        description:
+          type: string
+        status:
+          type: string
+          enum: [PENDING, COMPLETED, REJECTED, FAILED]
+          description: |
+            請求のステータス
+            - PENDING: 未払い（ユーザーの承認待ち）
+            - COMPLETED: 支払い完了
+            - REJECTED: ユーザーが拒否
+            - FAILED: 支払い失敗（残高不足など）
+        createdAt:
+          type: string
+          format: date-time
+
+    CreateTransactionRequest:
+      type: object
+      required:
+        - toUser
+        - amount
+      properties:
+        toUser:
+          type: string
+          description: 送金先のユーザー名 (traP ID)
+        amount:
+          type: integer
+          format: int64
+          minimum: 1
+        description:
+          type: string
+        requestId:
+          type: string
+          format: uuid
+          description: 冪等性キー (必須推奨)
+
+    CreateBillRequest:
+      type: object
+      required:
+        - targetUser
+        - amount
+        - successUrl
+        - cancelUrl
+      properties:
+        targetUser:
+          type: string
+          description: 請求先のユーザー名 (traP ID)
+        amount:
+          type: integer
+          format: int64
+          minimum: 1
+        description:
+          type: string
+        successUrl:
+          type: string
+          format: uri
+          description: 決済成功時のリダイレクト先URL
+        cancelUrl:
+          type: string
+          format: uri
+          description: 決済キャンセル/拒否時のリダイレクト先URL
+
+    CreateBillResponse:
+      type: object
+      required:
+        - billId
+        - paymentUrl
+        - expiresAt
+      properties:
+        billId:
+          type: string
+          format: uuid
+        paymentUrl:
+          type: string
+          format: uri
+          description: ユーザーをリダイレクトさせる決済確認ページのURL
+        expiresAt:
+          type: string
+          format: date-time
+
+    Error:
+      type: object
+      required:
+        - message
+      properties:
+        message:
+          type: string
+
+security:
+  - BearerAuth: []
+
+paths:
+  # --- Me ---
+  /me:
+    get:
+      tags: [Me]
+      operationId: getMe
+      summary: 自プロジェクトの情報を取得
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+        '401':
+          description: 認証エラー
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /me/transactions:
+    get:
+      tags: [Me]
+      operationId: getMyTransactions
+      summary: 自プロジェクトの取引履歴を取得
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+            maximum: 100
+        - name: cursor
+          in: query
+          schema:
+            type: string
+            description: |
+              続きを取得するためのカーソル
+              前回のレスポンスの nextCursor に含まれる値を指定します。
+              初回リクエスト時は未指定とします。
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Transaction'
+                  nextCursor:
+                    type: string
+                    description: 次のページを取得するためのカーソル (存在しない場合は未設定)
+        '401':
+          description: 認証エラー
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /me/bills:
+    get:
+      tags: [Me]
+      operationId: getMyBills
+      summary: 自プロジェクトが作成した請求一覧を取得
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [PENDING, COMPLETED, REJECTED, FAILED]
+            description: ステータスでフィルタリング
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+            maximum: 100
+        - name: cursor
+          in: query
+          schema:
+            type: string
+            description: |
+              続きを取得するためのカーソル
+              前回のレスポンスの nextCursor に含まれる値を指定します。
+              初回リクエスト時は未指定とします。
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Bill'
+                  nextCursor:
+                    type: string
+                    description: 次のページを取得するためのカーソル (存在しない場合は未設定)
+        '401':
+          description: 認証エラー
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # --- Transactions ---
+  /transactions:
+    post:
+      tags: [Transactions]
+      operationId: createTransaction
+      summary: ユーザーへ送金する (配布・賞与など)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTransactionRequest'
+      responses:
+        '200':
+          description: 送金成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Transaction'
+        '400':
+          description: リクエストエラー（残高不足、ユーザー不在など）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: 認証エラー
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: 重複リクエスト
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  # --- Bills ---
+  /bills:
+    post:
+      tags: [Bills]
+      operationId: createBill
+      summary: ユーザーへの請求を作成する
+      description: レスポンスに含まれる paymentUrl へユーザーを誘導してください
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateBillRequest'
+      responses:
+        '201':
+          description: 請求作成完了
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateBillResponse'
+        '400':
+          description: リクエストエラー（ユーザー不在、金額不正など）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: 認証エラー
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /bills/{billId}:
+    get:
+      tags: [Bills]
+      operationId: getBill
+      summary: 請求のステータスを確認する
+      parameters:
+        - name: billId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Bill'
+        '401':
+          description: 認証エラー
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: 請求が見つからない
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /bills/{billId}/cancel:
+    post:
+      tags: [Bills]
+      operationId: cancelBill
+      summary: 未処理の請求をキャンセルする
+      description: PENDING状態の請求のみキャンセル可能
+      parameters:
+        - name: billId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: キャンセル完了
+        '401':
+          description: 認証エラー
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: 請求が見つからない
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '409':
+          description: 請求は既に処理済み
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'

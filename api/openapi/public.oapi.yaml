@@ -1,0 +1,7 @@
+package: publicapi
+generate:
+  echo-server: true
+  models: true
+output: internal/generated/publicapi/openapi.gen.go
+output-options:
+  skip-prune: true

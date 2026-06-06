@@ -1,0 +1,7 @@
+package: internalapi
+generate:
+  echo-server: true
+  models: true
+output: internal/generated/internalapi/openapi.gen.go
+output-options:
+  skip-prune: true

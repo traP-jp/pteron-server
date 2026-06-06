@@ -19,6 +19,12 @@ out/
 ### Kotlin ###
 .kotlin
 
+### Go ###
+.bin/
+.gocache/
+.gomodcache/
+/pteron
+
 ### Eclipse ###
 .apt_generated
 .classpath
