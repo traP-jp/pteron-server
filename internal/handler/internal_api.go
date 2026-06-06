@@ -576,29 +576,70 @@ func apiClientDTO(client domain.APIClient, plainSecret *string) internalapi.APIC
 }
 
 func (a *InternalAPI) transactionDTOs(ctx context.Context, transactions []domain.Transaction) ([]internalapi.Transaction, error) {
+	if len(transactions) == 0 {
+		return []internalapi.Transaction{}, nil
+	}
+
+	userIDs := make([]domain.UserID, 0, len(transactions))
+	projectIDs := make([]domain.ProjectID, 0, len(transactions))
+	for _, transaction := range transactions {
+		if transaction.UserID != nil {
+			userIDs = append(userIDs, *transaction.UserID)
+		}
+		if transaction.ProjectID != nil {
+			projectIDs = append(projectIDs, *transaction.ProjectID)
+		}
+	}
+
+	users, err := a.users.GetUsersByIDs(ctx, uniqueIDs(userIDs))
+	if err != nil {
+		return nil, err
+	}
+	userByID := make(map[domain.UserID]domain.User, len(users))
+	accountIDs := make([]domain.AccountID, 0, len(users))
+	for _, user := range users {
+		userByID[user.ID] = user
+		accountIDs = append(accountIDs, user.AccountID)
+	}
+	accounts, err := a.accounts.GetAccountsByIDs(ctx, uniqueIDs(accountIDs))
+	if err != nil {
+		return nil, err
+	}
+	accountByID := make(map[domain.AccountID]domain.Account, len(accounts))
+	for _, account := range accounts {
+		accountByID[account.ID] = account
+	}
+
+	projects, err := a.projects.GetProjectsByIDs(ctx, uniqueIDs(projectIDs))
+	if err != nil {
+		return nil, err
+	}
+	projectDTOItems, err := a.projectDTOs(ctx, projects)
+	if err != nil {
+		return nil, err
+	}
+	projectDTOByID := make(map[domain.ProjectID]internalapi.Project, len(projectDTOItems))
+	for i, dto := range projectDTOItems {
+		projectDTOByID[projects[i].ID] = dto
+	}
+
 	items := make([]internalapi.Transaction, 0, len(transactions))
 	for _, transaction := range transactions {
 		var userDTOValue *internalapi.User
 		if transaction.UserID != nil {
-			user, err := a.users.GetUserByID(ctx, *transaction.UserID)
-			if err == nil {
-				account, err := a.accounts.GetAccountByID(ctx, user.AccountID)
-				if err != nil {
-					return nil, err
+			user, ok := userByID[*transaction.UserID]
+			if ok {
+				if account, ok := accountByID[user.AccountID]; ok {
+					dto := userDTO(user, account)
+					userDTOValue = &dto
 				}
-				dto := userDTO(user, account)
-				userDTOValue = &dto
 			}
 		}
 		var projectDTOValue *internalapi.Project
 		if transaction.ProjectID != nil {
-			project, err := a.projects.GetProjectByID(ctx, *transaction.ProjectID)
-			if err == nil {
-				dtos, err := a.projectDTOs(ctx, []domain.Project{project})
-				if err != nil {
-					return nil, err
-				}
-				projectDTOValue = &dtos[0]
+			dto, ok := projectDTOByID[*transaction.ProjectID]
+			if ok {
+				projectDTOValue = &dto
 			}
 		}
 		items = append(items, internalapi.Transaction{
@@ -675,6 +716,7 @@ func (a *InternalAPI) projectDTOs(ctx context.Context, projects []domain.Project
 	accountIDs := make([]domain.AccountID, 0, len(projects))
 	for _, project := range projects {
 		accountIDs = append(accountIDs, project.AccountID)
+		userIDs = append(userIDs, project.OwnerID)
 		userIDs = append(userIDs, project.AdminIDs...)
 	}
 	users, err := a.users.GetUsersByIDs(ctx, uniqueIDs(userIDs))

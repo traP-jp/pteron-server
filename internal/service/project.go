@@ -16,6 +16,7 @@ import (
 type ProjectStore interface {
 	FindAll(ctx context.Context) ([]domain.Project, error)
 	FindByID(ctx context.Context, id domain.ProjectID) (*domain.Project, error)
+	FindByIDs(ctx context.Context, ids []domain.ProjectID) ([]domain.Project, error)
 	FindByName(ctx context.Context, name domain.ProjectName) (*domain.Project, error)
 	FindByUserID(ctx context.Context, userID domain.UserID) ([]domain.Project, error)
 	FindByAPIClientID(ctx context.Context, clientID domain.ID) (*domain.Project, error)
@@ -100,6 +101,10 @@ func (s *ProjectService) GetProjectByID(ctx context.Context, id domain.ProjectID
 		return domain.Project{}, app.NewError(app.CodeNotFound, "Project not found")
 	}
 	return *project, nil
+}
+
+func (s *ProjectService) GetProjectsByIDs(ctx context.Context, ids []domain.ProjectID) ([]domain.Project, error) {
+	return s.projects.FindByIDs(ctx, ids)
 }
 
 func (s *ProjectService) GetProjectByName(ctx context.Context, name domain.ProjectName) (domain.Project, error) {

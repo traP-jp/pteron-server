@@ -27,6 +27,17 @@ func (r *ProjectRepository) FindByID(ctx context.Context, id domain.ProjectID) (
 	return &projects[0], nil
 }
 
+func (r *ProjectRepository) FindByIDs(ctx context.Context, ids []domain.ProjectID) ([]domain.Project, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	query, args, err := sqlx.In("SELECT id, name, owner_id, account_id, url FROM projects WHERE id IN (?)", idBytes(ids))
+	if err != nil {
+		return nil, err
+	}
+	return r.findByQuery(ctx, r.db.Rebind(query), args...)
+}
+
 func (r *ProjectRepository) FindByName(ctx context.Context, name domain.ProjectName) (*domain.Project, error) {
 	projects, err := r.findByQuery(ctx, "SELECT id, name, owner_id, account_id, url FROM projects WHERE LOWER(name) = ?", name.Normalized())
 	if err != nil || len(projects) == 0 {
