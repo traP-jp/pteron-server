@@ -289,11 +289,11 @@ func (a *InternalAPI) GetProjectApiClients(ctx echo.Context, projectId string) e
 	if err != nil {
 		return err
 	}
-	projectID, err := domain.ParseID(projectId)
+	project, err := a.projects.GetProject(ctx.Request().Context(), projectId)
 	if err != nil {
 		return err
 	}
-	clients, err := a.projects.GetProjectAPIClients(ctx.Request().Context(), domain.ProjectID(projectID), currentUser.ID)
+	clients, err := a.projects.GetProjectAPIClients(ctx.Request().Context(), project.ID, currentUser.ID)
 	if err != nil {
 		return err
 	}
@@ -308,11 +308,11 @@ func (a *InternalAPI) CreateProjectApiClient(ctx echo.Context, projectId string)
 	if err != nil {
 		return err
 	}
-	projectID, err := domain.ParseID(projectId)
+	project, err := a.projects.GetProject(ctx.Request().Context(), projectId)
 	if err != nil {
 		return err
 	}
-	result, err := a.projects.CreateAPIClient(ctx.Request().Context(), domain.ProjectID(projectID), currentUser.ID)
+	result, err := a.projects.CreateAPIClient(ctx.Request().Context(), project.ID, currentUser.ID)
 	if err != nil {
 		return err
 	}
@@ -323,7 +323,7 @@ func (a *InternalAPI) DeleteProjectApiClient(ctx echo.Context, projectId string,
 	if err != nil {
 		return err
 	}
-	projectID, err := domain.ParseID(projectId)
+	project, err := a.projects.GetProject(ctx.Request().Context(), projectId)
 	if err != nil {
 		return err
 	}
@@ -331,7 +331,7 @@ func (a *InternalAPI) DeleteProjectApiClient(ctx echo.Context, projectId string,
 	if err != nil {
 		return err
 	}
-	if err := a.projects.DeleteAPIClient(ctx.Request().Context(), domain.ProjectID(projectID), clientID, currentUser.ID); err != nil {
+	if err := a.projects.DeleteAPIClient(ctx.Request().Context(), project.ID, clientID, currentUser.ID); err != nil {
 		return err
 	}
 	return ctx.NoContent(http.StatusNoContent)
